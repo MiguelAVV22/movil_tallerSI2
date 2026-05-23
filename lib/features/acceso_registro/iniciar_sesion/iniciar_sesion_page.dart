@@ -126,6 +126,12 @@ class _IniciarSesionPageState extends State<IniciarSesionPage> {
                   linkText: 'Regístrate aquí',
                   onTap: () => Navigator.pushNamed(context, '/registro'),
                 ),
+                const SizedBox(height: 10),
+                AuthFooterLink(
+                  text: '¿Olvidaste tu contraseña? ',
+                  linkText: 'Recupérala aquí',
+                  onTap: () => Navigator.pushNamed(context, '/recuperar-contrasena'),
+                ),
               ],
             ),
           ),

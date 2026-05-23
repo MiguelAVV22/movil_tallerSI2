@@ -2,6 +2,117 @@ import 'package:flutter/material.dart';
 import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/services/auth_service.dart';
 
+// Modelos internos para nav declarativo
+class _ItemDef {
+  final String label;
+  final String route;
+  final List<String> roles;
+  const _ItemDef({required this.label, required this.route, required this.roles});
+  bool canAccess(String role) => roles.isEmpty || roles.contains(role);
+}
+
+class _SectionDef {
+  final String id;
+  final IconData icon;
+  final String label;
+  final List<_ItemDef> items;
+  final Color? iconColor;
+  const _SectionDef({
+    required this.id,
+    required this.icon,
+    required this.label,
+    required this.items,
+    this.iconColor,
+  });
+  bool hasAnyAccess(String role) => items.any((i) => i.canAccess(role));
+}
+
+// ── Los 7 módulos siempre visibles ───────────────────────────
+final _allSections = [
+  _SectionDef(
+    id: 'acceso',
+    icon: Icons.manage_accounts_outlined,
+    label: 'Acceso y Registro',
+    items: [
+      _ItemDef(label: 'Mis Vehículos',      route: '/acceso/mis-vehiculos',    roles: ['cliente']),
+      _ItemDef(label: 'Registrar Taller',   route: '/acceso/registrar-taller', roles: ['taller']),
+      _ItemDef(label: 'Gestionar Usuarios', route: '/gestionar-usuarios',      roles: ['admin']),
+      _ItemDef(label: 'Aprobar Talleres',   route: '/aprobar-talleres',        roles: ['admin']),
+    ],
+  ),
+  _SectionDef(
+    id: 'emergencias',
+    icon: Icons.warning_amber_rounded,
+    label: 'Emergencias',
+    iconColor: AppColors.danger,
+    items: [
+      _ItemDef(label: 'Reportar Emergencia',   route: '/emergencias/reportar',    roles: ['cliente']),
+      _ItemDef(label: 'Enviar Audio',          route: '/emergencias/audio',       roles: ['cliente']),
+      _ItemDef(label: 'Agregar Descripción',   route: '/emergencias/descripcion', roles: ['cliente']),
+    ],
+  ),
+  _SectionDef(
+    id: 'solicitudes',
+    icon: Icons.assignment_outlined,
+    label: 'Solicitudes',
+    items: [
+      _ItemDef(label: 'Ver Estado',              route: '/solicitudes/estado',       roles: ['cliente']),
+      _ItemDef(label: 'Cancelar Solicitud',      route: '/solicitudes/cancelar',     roles: ['cliente']),
+      _ItemDef(label: 'Ver Disponibles',         route: '/solicitudes/disponibles',  roles: ['taller']),
+      _ItemDef(label: 'Detalle de Incidente',    route: '/solicitudes/detalle',      roles: ['taller']),
+      _ItemDef(label: 'Aceptar Solicitud',       route: '/solicitudes/aceptar',      roles: ['taller']),
+      _ItemDef(label: 'Rechazar Solicitud',      route: '/solicitudes/rechazar',     roles: ['taller']),
+    ],
+  ),
+  _SectionDef(
+    id: 'talleres',
+    icon: Icons.build_outlined,
+    label: 'Talleres y Técnicos',
+    items: [
+      _ItemDef(label: 'Gestionar Técnicos',       route: '/talleres/gestionar-tecnicos',  roles: ['taller']),
+      _ItemDef(label: 'Gestionar Disponibilidad', route: '/talleres/disponibilidad',       roles: ['taller']),
+      _ItemDef(label: 'Actualizar Estado Servicio', route: '/talleres/estado-servicio',   roles: ['taller', 'tecnico']),
+      _ItemDef(label: 'Registrar Servicio',       route: '/talleres/servicio-realizado',  roles: ['taller', 'tecnico']),
+    ],
+  ),
+  _SectionDef(
+    id: 'pagos',
+    icon: Icons.payments_outlined,
+    label: 'Cotización y Pagos',
+    items: [
+      _ItemDef(label: 'Generar Cotización',   route: '/pagos/generar',     roles: ['taller']),
+      _ItemDef(label: 'Ver Cotizaciones',     route: '/pagos/ver',         roles: ['taller', 'cliente']),
+      _ItemDef(label: 'Confirmar Cotización', route: '/pagos/confirmar',   roles: ['taller']),
+      _ItemDef(label: 'Realizar Pago',        route: '/pagos/realizar',    roles: ['cliente']),
+      _ItemDef(label: 'Ver Comisiones',       route: '/pagos/comisiones',  roles: ['taller']),
+    ],
+  ),
+  _SectionDef(
+    id: 'comunicacion',
+    icon: Icons.chat_bubble_outline,
+    label: 'Comunicación',
+    items: [
+      _ItemDef(label: 'Chat',             route: '/comunicacion/chat',           roles: ['cliente', 'taller', 'tecnico']),
+      _ItemDef(label: 'Notificaciones',   route: '/comunicacion/notificaciones', roles: ['cliente', 'taller']),
+      _ItemDef(label: 'Ver Técnico en Mapa', route: '/comunicacion/ver-tecnico', roles: ['cliente']),
+      _ItemDef(label: 'Compartir Ubicación', route: '/comunicacion/compartir-ubicacion', roles: ['tecnico']),
+    ],
+  ),
+  _SectionDef(
+    id: 'reportes',
+    icon: Icons.bar_chart_outlined,
+    label: 'Reportes',
+    items: [
+      _ItemDef(label: 'Historial de Servicios', route: '/reportes/historial',         roles: ['cliente', 'taller']),
+      _ItemDef(label: 'Calificar Servicio',     route: '/reportes/calificar',         roles: ['cliente']),
+      _ItemDef(label: 'Recordatorios',          route: '/mantenimiento/recordatorios', roles: ['cliente']),
+      _ItemDef(label: 'Métricas del Taller',    route: '/reportes/metricas-taller',   roles: ['taller']),
+      _ItemDef(label: 'Métricas Globales',      route: '/reportes/metricas-globales', roles: ['admin']),
+      _ItemDef(label: 'Auditoría / Bitácora',   route: '/reportes/auditoria',         roles: ['admin']),
+    ],
+  ),
+];
+
 class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
 
@@ -12,7 +123,7 @@ class AppDrawer extends StatefulWidget {
 class _AppDrawerState extends State<AppDrawer> {
   final _auth = AuthService();
   Map<String, dynamic>? _user;
-  final Set<String> _expanded = {'emergencias'};
+  final Set<String> _expanded = {};
 
   @override
   void initState() {
@@ -26,8 +137,34 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _navigate(String route) {
-    Navigator.pop(context); // cerrar drawer
+    Navigator.pop(context);
     Navigator.pushNamed(context, route);
+  }
+
+  void _navigateDenied() {
+    Navigator.pop(context);
+    Navigator.pushNamed(context, '/acceso-denegado');
+  }
+
+  void _toggle(String id) {
+    setState(() {
+      if (_expanded.contains(id)) {
+        _expanded.remove(id);
+      } else {
+        _expanded.add(id);
+      }
+    });
+  }
+
+  String get _roleLabel {
+    final r = _user?['role'] as String? ?? 'cliente';
+    const map = {
+      'admin': 'Administrador',
+      'taller': 'Taller',
+      'tecnico': 'Técnico',
+      'cliente': 'Cliente',
+    };
+    return map[r] ?? r;
   }
 
   @override
@@ -35,16 +172,13 @@ class _AppDrawerState extends State<AppDrawer> {
     final name    = _user?['full_name'] ?? _user?['username'] ?? '...';
     final email   = _user?['email'] ?? '';
     final role    = _user?['role'] as String? ?? 'cliente';
-    final isAdmin = role == 'admin';
-    final isTaller  = role == 'taller';
-    final isTecnico = role == 'tecnico';
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final initial = name.isNotEmpty ? (name as String)[0].toUpperCase() : '?';
 
     return Drawer(
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // ── Cabecera de usuario ──────────────────────────
+          // ── Cabecera ─────────────────────────────────────
           UserAccountsDrawerHeader(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -70,21 +204,21 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
             accountEmail: Row(
               children: [
-                Text(email, style: const TextStyle(fontSize: 12)),
-                if (role != 'cliente') ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      isAdmin ? 'Admin' : isTaller ? 'Taller' : 'Técnico',
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-                    ),
+                Flexible(
+                  child: Text(email, style: const TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                ],
+                  child: Text(
+                    _roleLabel,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                  ),
+                ),
               ],
             ),
           ),
@@ -94,227 +228,117 @@ class _AppDrawerState extends State<AppDrawer> {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-
                 // Dashboard
-                _NavItem(
-                  icon: Icons.grid_view_rounded,
-                  label: 'Inicio',
+                ListTile(
+                  leading: const Icon(Icons.grid_view_rounded, color: AppColors.primary, size: 22),
+                  title: const Text('Inicio',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.text)),
+                  horizontalTitleGap: 8,
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushNamedAndRemoveUntil(
-                        context, '/dashboard', (r) => false);
+                    Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (r) => false);
                   },
                 ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
 
-                const _SectionDivider(),
+                // ── 7 módulos siempre visibles ───────────────
+                ...(_allSections.map<Widget>((section) {
+                  final sectionLocked = !section.hasAnyAccess(role);
+                  final isOpen = _expanded.contains(section.id);
 
-                // ── cliente ──────────────────────────────────
-                if (!isTaller && !isTecnico && !isAdmin) ...[
-                  _NavSection(
-                    id: 'acceso',
-                    icon: Icons.manage_accounts_outlined,
-                    label: 'Mi Cuenta',
-                    expanded: _expanded,
-                    onToggle: _toggle,
+                  return Column(
                     children: [
-                      _NavChild(label: 'Mis vehículos',
-                          onTap: () => _navigate('/acceso/mis-vehiculos')),
-                      _NavChild(label: 'Registrar taller',
-                          onTap: () => _navigate('/acceso/registrar-taller')),
+                      ListTile(
+                        leading: Icon(
+                          section.icon,
+                          color: sectionLocked
+                              ? AppColors.grey
+                              : (section.iconColor ?? AppColors.primary),
+                          size: 22,
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                section.label,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: sectionLocked ? AppColors.grey : AppColors.text,
+                                ),
+                              ),
+                            ),
+                            if (sectionLocked)
+                              const Icon(Icons.lock_outline, size: 14, color: AppColors.grey),
+                          ],
+                        ),
+                        trailing: AnimatedRotation(
+                          turns: isOpen ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(Icons.expand_more, color: AppColors.grey, size: 20),
+                        ),
+                        horizontalTitleGap: 8,
+                        onTap: () => _toggle(section.id),
+                      ),
+                      AnimatedCrossFade(
+                        firstChild: const SizedBox.shrink(),
+                        secondChild: Container(
+                          color: const Color(0xFFF9FAFB),
+                          child: Column(
+                            children: section.items.map((item) {
+                              final itemLocked = !item.canAccess(role);
+                              return ListTile(
+                                contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                                dense: true,
+                                leading: itemLocked
+                                    ? const Icon(Icons.lock_outline, size: 13, color: AppColors.grey)
+                                    : null,
+                                title: Text(
+                                  item.label,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: itemLocked ? AppColors.grey : AppColors.text,
+                                  ),
+                                ),
+                                onTap: itemLocked
+                                    ? _navigateDenied
+                                    : () => _navigate(item.route),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        crossFadeState: isOpen
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        duration: const Duration(milliseconds: 200),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
                     ],
-                  ),
-                  _NavSection(
-                    id: 'emergencias',
-                    icon: Icons.warning_amber_rounded,
-                    label: 'Emergencias',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    iconColor: AppColors.danger,
-                    children: [
-                      _NavChild(label: 'Reportar emergencia',
-                          onTap: () => _navigate('/emergencias/reportar')),
-                      _NavChild(label: 'Enviar ubicación GPS',
-                          onTap: () => _navigate('/emergencias/reportar')),
-                      _NavChild(label: 'Adjuntar fotos',
-                          onTap: () => _navigate('/emergencias/reportar')),
-                      _NavChild(label: 'Enviar audio',
-                          onTap: () => _navigate('/emergencias/reportar')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'solicitudes',
-                    icon: Icons.assignment_outlined,
-                    label: 'Mis Solicitudes',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Ver estado',
-                          onTap: () => _navigate('/solicitudes/estado')),
-                      _NavChild(label: 'Cancelar solicitud',
-                          onTap: () => _navigate('/solicitudes/cancelar')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'pagos',
-                    icon: Icons.payments_outlined,
-                    label: 'Pagos',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Ver cotización',
-                          onTap: () => _navigate('/pagos/ver')),
-                      _NavChild(label: 'Realizar pago',
-                          onTap: () => _navigate('/pagos/realizar')),
-                    ],
-                  ),
-                ],
-
-                // ── taller ───────────────────────────────────
-                if (isTaller) ...[
-                  _NavSection(
-                    id: 'solicitudes',
-                    icon: Icons.assignment_outlined,
-                    label: 'Solicitudes',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Solicitudes disponibles',
-                          onTap: () => _navigate('/solicitudes/disponibles')),
-                      _NavChild(label: 'Detalle de incidente',
-                          onTap: () => _navigate('/solicitudes/detalle')),
-                      _NavChild(label: 'Aceptar solicitud',
-                          onTap: () => _navigate('/solicitudes/aceptar')),
-                      _NavChild(label: 'Rechazar solicitud',
-                          onTap: () => _navigate('/solicitudes/rechazar')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'talleres',
-                    icon: Icons.build_outlined,
-                    label: 'Talleres y Técnicos',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Actualizar estado servicio',
-                          onTap: () => _navigate('/talleres/estado-servicio')),
-                      _NavChild(label: 'Registrar servicio realizado',
-                          onTap: () => _navigate('/talleres/servicio-realizado')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'pagos',
-                    icon: Icons.payments_outlined,
-                    label: 'Cotización y Pagos',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Generar cotización',
-                          onTap: () => _navigate('/pagos/generar')),
-                      _NavChild(label: 'Confirmar cotización',
-                          onTap: () => _navigate('/pagos/confirmar')),
-                      _NavChild(label: 'Ver comisiones',
-                          onTap: () => _navigate('/pagos/comisiones')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'reportes',
-                    icon: Icons.bar_chart_outlined,
-                    label: 'Reportes',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Métricas del taller',
-                          onTap: () => _navigate('/reportes/metricas-taller')),
-                      _NavChild(label: 'Historial de servicios',
-                          onTap: () => _navigate('/reportes/historial')),
-                    ],
-                  ),
-                ],
-
-                // ── tecnico ──────────────────────────────────
-                if (isTecnico) ...[
-                  _NavSection(
-                    id: 'talleres',
-                    icon: Icons.build_outlined,
-                    label: 'Mi Trabajo',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Actualizar estado servicio',
-                          onTap: () => _navigate('/talleres/estado-servicio')),
-                      _NavChild(label: 'Registrar servicio realizado',
-                          onTap: () => _navigate('/talleres/servicio-realizado')),
-                    ],
-                  ),
-                ],
-
-                // ── admin ────────────────────────────────────
-                if (isAdmin) ...[
-                  _NavSection(
-                    id: 'acceso',
-                    icon: Icons.manage_accounts_outlined,
-                    label: 'Gestión',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Aprobar talleres',
-                          onTap: () => _navigate('/aprobar-talleres')),
-                      _NavChild(label: 'Gestionar usuarios',
-                          onTap: () => _navigate('/gestionar-usuarios')),
-                    ],
-                  ),
-                  _NavSection(
-                    id: 'reportes',
-                    icon: Icons.bar_chart_outlined,
-                    label: 'Reportes',
-                    expanded: _expanded,
-                    onToggle: _toggle,
-                    children: [
-                      _NavChild(label: 'Métricas globales',
-                          onTap: () => _navigate('/reportes/metricas-globales')),
-                      _NavChild(label: 'Auditoría',
-                          onTap: () => _navigate('/reportes/auditoria')),
-                    ],
-                  ),
-                ],
-
-                // ── común a todos ─────────────────────────────
-                _NavSection(
-                  id: 'comunicacion',
-                  icon: Icons.chat_bubble_outline,
-                  label: 'Comunicación',
-                  expanded: _expanded,
-                  onToggle: _toggle,
-                  children: [
-                    _NavChild(label: 'Chat',
-                        onTap: () => _navigate('/comunicacion/chat')),
-                    _NavChild(label: 'Notificaciones',
-                        onTap: () => _navigate('/comunicacion/notificaciones')),
-                    _NavChild(label: 'Ver técnico en mapa',
-                        onTap: () => _navigate('/comunicacion/mapa')),
-                  ],
-                ),
-                _NavSection(
-                  id: 'reportes_comun',
-                  icon: Icons.history_outlined,
-                  label: 'Historial',
-                  expanded: _expanded,
-                  onToggle: _toggle,
-                  children: [
-                    _NavChild(label: 'Historial de servicios',
-                        onTap: () => _navigate('/reportes/historial')),
-                    _NavChild(label: 'Calificar servicio',
-                        onTap: () => _navigate('/reportes/calificar')),
-                  ],
-                ),
+                  );
+                })),
 
                 const SizedBox(height: 8),
               ],
             ),
           ),
 
-          // ── Pie con logout ───────────────────────────────
+          // ── Pie con acciones ─────────────────────────────
           const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.key_outlined, color: AppColors.primary, size: 22),
+            title: const Text(
+              'Cambiar contraseña',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/acceso/cambiar-contrasena');
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.logout, color: AppColors.danger, size: 22),
             title: const Text(
@@ -330,116 +354,6 @@ class _AppDrawerState extends State<AppDrawer> {
           const SizedBox(height: 8),
         ],
       ),
-    );
-  }
-
-  void _toggle(String id) {
-    setState(() {
-      if (_expanded.contains(id)) {
-        _expanded.remove(id);
-      } else {
-        _expanded.add(id);
-      }
-    });
-  }
-}
-
-// ── Widgets internos ─────────────────────────────────────────
-
-class _SectionDivider extends StatelessWidget {
-  const _SectionDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Divider(height: 1, indent: 16, endIndent: 16);
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary, size: 22),
-      title: Text(label,
-          style: const TextStyle(
-              fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.text)),
-      onTap: onTap,
-      horizontalTitleGap: 8,
-    );
-  }
-}
-
-class _NavSection extends StatelessWidget {
-  const _NavSection({
-    required this.id,
-    required this.icon,
-    required this.label,
-    required this.expanded,
-    required this.onToggle,
-    required this.children,
-    this.iconColor,
-  });
-
-  final String id;
-  final IconData icon;
-  final String label;
-  final Set<String> expanded;
-  final void Function(String) onToggle;
-  final List<Widget> children;
-  final Color? iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final isOpen = expanded.contains(id);
-    return Column(
-      children: [
-        ListTile(
-          leading: Icon(icon, color: iconColor ?? AppColors.primary, size: 22),
-          title: Text(label,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.text)),
-          trailing: AnimatedRotation(
-            turns: isOpen ? 0.5 : 0,
-            duration: const Duration(milliseconds: 200),
-            child: const Icon(Icons.expand_more, color: AppColors.grey, size: 20),
-          ),
-          horizontalTitleGap: 8,
-          onTap: () => onToggle(id),
-        ),
-        AnimatedCrossFade(
-          firstChild: const SizedBox.shrink(),
-          secondChild: Container(
-            color: const Color(0xFFF9FAFB),
-            child: Column(children: children),
-          ),
-          crossFadeState:
-              isOpen ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 200),
-        ),
-        const _SectionDivider(),
-      ],
-    );
-  }
-}
-
-class _NavChild extends StatelessWidget {
-  const _NavChild({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.only(left: 56, right: 16),
-      title: Text(label,
-          style: const TextStyle(fontSize: 13, color: AppColors.text)),
-      dense: true,
-      onTap: onTap,
     );
   }
 }

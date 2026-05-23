@@ -1,13 +1,11 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:taller_movil/core/config/app_config.dart';
 import 'auth_service.dart';
 import 'api_helper.dart';
 
 class VehiculoService {
-  static final _baseUrl = kIsWeb
-      ? 'http://localhost:8000/api/acceso'
-      : 'http://10.0.2.2:8000/api/acceso';
+  static final _baseUrl = '${AppConfig.baseUrl}/api/acceso';
   final _auth = AuthService();
 
   Future<Map<String, String>> _authHeaders() async {
@@ -61,11 +59,11 @@ class VehiculoService {
     String? color,
   }) async {
     final body = <String, dynamic>{
-      if (placa != null) 'placa': placa,
-      if (marca != null) 'marca': marca,
-      if (modelo != null) 'modelo': modelo,
-      if (anio != null) 'anio': anio,
-      if (color != null) 'color': color,
+      'placa': ?placa,
+      'marca': ?marca,
+      'modelo': ?modelo,
+      'anio': ?anio,
+      'color': ?color,
     };
     final res = await http.patch(
       Uri.parse('$_baseUrl/vehiculos/$id'),
@@ -99,8 +97,8 @@ class VehiculoService {
       'direccion': direccion,
       if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
       if (emailComercial != null && emailComercial.isNotEmpty) 'email_comercial': emailComercial,
-      if (latitud != null) 'latitud': latitud,
-      if (longitud != null) 'longitud': longitud,
+      'latitud': ?latitud,
+      'longitud': ?longitud,
     };
     final res = await http.post(
       Uri.parse('$_baseUrl/talleres'),

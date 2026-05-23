@@ -200,14 +200,16 @@ class _GestionarVehiculosPageState extends State<GestionarVehiculosPage> {
             );
           }
           final vehiculos = snapshot.data ?? [];
-          if (vehiculos.isEmpty) return _EmptyState(onAdd: () async {
-            await Navigator.push(context, MaterialPageRoute(builder: (_) => const RegistrarVehiculoPage()));
-            _reload();
-          });
+          if (vehiculos.isEmpty) {
+            return _EmptyState(onAdd: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const RegistrarVehiculoPage()));
+              _reload();
+            });
+          }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: vehiculos.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (_, i) => _VehiculoCard(
               vehiculo: vehiculos[i],
               onEdit: () => _editar(vehiculos[i]),

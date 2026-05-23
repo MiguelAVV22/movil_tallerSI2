@@ -31,6 +31,8 @@ const _estadoIcon = {
   'cancelado':     Icons.cancel_outlined,
 };
 
+// en_sitio es confirmado por el cliente (CU31) en el caso normal.
+// El taller puede usarlo como fallback si el cliente no tiene señal (ej. SOS).
 const _transiciones = {
   'aceptado':      ['en_camino', 'cancelado'],
   'en_camino':     ['en_sitio',  'cancelado'],
@@ -75,8 +77,7 @@ class _ActualizarEstadoServicioPageState
 
   Future<void> _actualizar(AsignacionModel a, String nuevoEstado) async {
     // Pedir observación opcional
-    String? obs;
-    obs = await showDialog<String>(
+    final obs = await showDialog<String>(
       context: context,
       builder: (_) => _ObsDialog(estadoLabel: _estadoLabel[nuevoEstado] ?? nuevoEstado),
     );
@@ -94,12 +95,51 @@ class _ActualizarEstadoServicioPageState
           if (idx != -1) _asignaciones[idx] = actualizada;
         }
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Estado actualizado: ${_estadoLabel[actualizada.estado]}'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Estado actualizado: ${_estadoLabel[actualizada.estado]}'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+
+      // Al pasar a "en_camino", ofrecer compartir ubicación GPS al cliente
+      if (nuevoEstado == 'en_camino') {
+        final activar = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(children: [
+              Icon(Icons.location_on, color: AppColors.primary, size: 24),
+              SizedBox(width: 8),
+              Text('Compartir ubicación',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ]),
+            content: const Text(
+              'El cliente puede ver tu posición en tiempo real mientras vas en camino.\n\n¿Deseas activar la compartición de GPS ahora?',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Ahora no', style: TextStyle(color: AppColors.grey)),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, true),
+                icon: const Icon(Icons.gps_fixed, size: 16),
+                label: const Text('Activar GPS'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (activar == true && mounted) {
+          Navigator.pushNamed(context, '/comunicacion/compartir-ubicacion');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -239,6 +279,27 @@ class _AsignacionCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text('Incidente #${asignacion.incidenteId}',
                         style: const TextStyle(fontSize: 12, color: AppColors.grey)),
+                    if (asignacion.esSos) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('🆘', style: TextStyle(fontSize: 13)),
+                            SizedBox(width: 4),
+                            Text('SOS — emergencia urgente',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                    color: AppColors.danger)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ]),
                 ),
                 Container(
@@ -345,6 +406,33 @@ class _AsignacionCard extends StatelessWidget {
 
           const SizedBox(height: 14),
           const Divider(height: 1, color: Color(0xFFF3F4F6)),
+
+          // ── Aviso "en_sitio" cuando estado es en_camino ──
+          if (estado == 'en_camino')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFED7AA)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: Color(0xFFD97706)),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '"En sitio" lo confirma el cliente. Úsalo solo si el cliente no tiene señal (ej. SOS).',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           // ── Botones de transición ───────────────────────
           if (opciones.isEmpty)

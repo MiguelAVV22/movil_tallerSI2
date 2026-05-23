@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:taller_movil/core/config/app_config.dart';
 import 'package:taller_movil/services/api_helper.dart';
 import 'package:taller_movil/services/auth_service.dart';
 
@@ -13,6 +13,7 @@ class AsignacionModel {
   final int? eta;
   final String? observacion;
   final String createdAt;
+  final bool esSos;
 
   AsignacionModel({
     required this.id,
@@ -23,6 +24,7 @@ class AsignacionModel {
     this.eta,
     this.observacion,
     required this.createdAt,
+    this.esSos = false,
   });
 
   factory AsignacionModel.fromJson(Map<String, dynamic> j) => AsignacionModel(
@@ -34,6 +36,7 @@ class AsignacionModel {
         eta:         j['eta'] as int?,
         observacion: j['observacion'] as String?,
         createdAt:   j['created_at'] as String,
+        esSos:       j['es_sos'] as bool? ?? false,
       );
 }
 
@@ -82,9 +85,7 @@ class ServicioRealizadoModel {
 }
 
 class TallerService {
-  static final _baseUrl = kIsWeb
-      ? 'http://localhost:8000/api/talleres'
-      : 'http://10.0.2.2:8000/api/talleres';
+  static final _baseUrl = '${AppConfig.baseUrl}/api/talleres';
 
   final _auth = AuthService();
 
@@ -94,6 +95,17 @@ class TallerService {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
+  }
+
+  // ── CU18 · Asignaciones activas del cliente (para chat) ──
+  Future<List<AsignacionModel>> listarMisAsignacionesCliente() async {
+    final res = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/api/solicitudes/mis-asignaciones'),
+      headers: await _headers(),
+    );
+    verificarRespuesta(res);
+    final list = jsonDecode(res.body) as List<dynamic>;
+    return list.map((e) => AsignacionModel.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   // ── CU15 · Asignaciones activas ─────────────────────────
@@ -167,6 +179,33 @@ class TallerService {
       headers: await _headers(),
       body: jsonEncode(body),
     );
+    verificarRespuesta(res);
+    return AsignacionModel.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  // CU16 – Taller rechaza su asignación para un incidente
+  Future<Map<String, dynamic>> rechazarSolicitud(int incidenteId) async {
+    final res = await http.patch(
+      Uri.parse('${AppConfig.baseUrl}/api/solicitudes/$incidenteId/rechazar'),
+      headers: await _headers(),
+      body: jsonEncode({}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode == 401 || res.statusCode == 403) throw TokenExpiradoException();
+    final detail = res.body.isNotEmpty
+        ? (jsonDecode(res.body) as Map<String, dynamic>)['detail']
+        : null;
+    throw Exception(detail ?? 'Error al rechazar solicitud (${res.statusCode})');
+  }
+
+  // CU31 – Confirmar llegada del técnico (cliente)
+  Future<AsignacionModel> confirmarLlegadaTecnico(int asignacionId) async {
+    final res = await http.patch(
+      Uri.parse('$_baseUrl/asignaciones/$asignacionId/confirmar-llegada'),
+      headers: await _headers(),
+      body: jsonEncode({}),
+    );
+    if (res.statusCode == 401 || res.statusCode == 403) throw TokenExpiradoException();
     verificarRespuesta(res);
     return AsignacionModel.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }

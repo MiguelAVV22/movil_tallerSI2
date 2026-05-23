@@ -28,7 +28,7 @@ class _AdjuntarFotosPageState extends State<AdjuntarFotosPage> {
   bool _loadingPick = false;
   bool _uploading = false;
   String _error = '';
-  final List<String> _subidas = [];
+  final List<Map<String, dynamic>> _subidas = []; // {url, analisis_ia}
 
   Future<void> _pick(ImageSource source) async {
     setState(() { _loadingPick = true; _error = ''; });
@@ -80,15 +80,20 @@ class _AdjuntarFotosPageState extends State<AdjuntarFotosPage> {
         mimeType: file.mimeType,
       );
       final url = res['url'] as String? ?? '';
+      final analisis = res['analisis_ia'] as Map<String, dynamic>?;
       if (!mounted) return;
       setState(() {
-        _subidas.add(url);
+        _subidas.add({'url': url, 'analisis_ia': analisis});
         _previewFile = null;
         _previewBytes = null;
         _uploading = false;
       });
+      final etiqueta = analisis?['etiqueta_es'] as String? ?? '';
+      final msg = etiqueta.isNotEmpty
+          ? 'Foto guardada · IA: $etiqueta'
+          : 'Foto guardada';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto guardada'), backgroundColor: AppColors.success),
+        SnackBar(content: Text(msg), backgroundColor: AppColors.success),
       );
     } catch (e) {
       if (!mounted) return;
@@ -197,25 +202,66 @@ class _AdjuntarFotosPageState extends State<AdjuntarFotosPage> {
             ],
             if (_subidas.isNotEmpty) ...[
               const SizedBox(height: 24),
-              const Text('Fotos registradas', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(
+                'Fotos registradas (${_subidas.length})',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 8),
-              ..._subidas.map((u) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: AppColors.success, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            u,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                          ),
+              ..._subidas.map((item) {
+                final url     = item['url'] as String;
+                final analisis = item['analisis_ia'] as Map<String, dynamic>?;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      const Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(url,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                      ),
+                    ]),
+                    if (analisis != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                      ],
-                    ),
-                  )),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            const Icon(Icons.smart_toy_outlined, size: 13, color: Color(0xFF6366F1)),
+                            const SizedBox(width: 4),
+                            const Text('Análisis IA',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                color: Color(0xFF6366F1))),
+                          ]),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${analisis['etiqueta_es'] ?? ''} · '
+                            'Severidad: ${analisis['severidad_es'] ?? ''}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF1E1B4B),
+                              fontWeight: FontWeight.w500),
+                          ),
+                          if ((analisis['descripcion_auto'] as String?) != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(analisis['descripcion_auto'] as String,
+                                style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280))),
+                            ),
+                        ]),
+                      ),
+                    ],
+                  ]),
+                );
+              }),
             ],
             if (_error.isNotEmpty) ...[
               const SizedBox(height: 16),

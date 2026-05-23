@@ -1,15 +1,13 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:taller_movil/core/config/app_config.dart';
 import 'package:taller_movil/services/api_helper.dart';
 import 'package:taller_movil/services/auth_service.dart';
 import 'package:taller_movil/services/taller_service.dart';
 
 /// CU13 / CU15 – API solicitudes para rol taller.
 class SolicitudTallerService {
-  static final _base = kIsWeb
-      ? 'http://localhost:8000/api/solicitudes'
-      : 'http://10.0.2.2:8000/api/solicitudes';
+  static final _base = '${AppConfig.baseUrl}/api/solicitudes';
 
   final _auth = AuthService();
 

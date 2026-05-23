@@ -148,7 +148,7 @@ class _ReportarEmergenciaPageState extends State<ReportarEmergenciaPage> {
                       )
                     else
                       DropdownButtonFormField<int>(
-                        value: _vehiculoId,
+                        initialValue: _vehiculoId,
                         decoration: _inputDeco('Selecciona tu vehículo'),
                         items: _vehiculos.map((v) => DropdownMenuItem(
                           value: v['id'] as int,
@@ -166,7 +166,7 @@ class _ReportarEmergenciaPageState extends State<ReportarEmergenciaPage> {
                     const _Label('Prioridad *'),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _prioridad,
+                      initialValue: _prioridad,
                       decoration: _inputDeco('Selecciona la prioridad'),
                       items: _prioridades.map((p) => DropdownMenuItem(
                         value: p['value'],

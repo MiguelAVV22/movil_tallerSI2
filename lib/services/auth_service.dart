@@ -1,12 +1,10 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:taller_movil/core/config/app_config.dart';
 
 class AuthService {
-  static final _baseUrl = kIsWeb
-      ? 'http://localhost:8000/api/acceso'
-      : 'http://10.0.2.2:8000/api/acceso';
+  static final _baseUrl = '${AppConfig.baseUrl}/api/acceso';
   static const _tokenKey  = 'access_token';
   static const _userKey   = 'taller_user';
 
@@ -53,6 +51,43 @@ class AuthService {
     }
     final err = jsonDecode(res.body);
     throw Exception(err['detail'] ?? 'Error al registrarse');
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    final token = await getToken();
+    final res = await http.post(
+      Uri.parse('$_baseUrl/change-password'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}),
+    );
+    if (res.statusCode != 200) {
+      final err = jsonDecode(res.body);
+      throw Exception(err['detail'] ?? 'Error al cambiar la contraseña');
+    }
+  }
+
+  Future<void> requestReset(String email) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/request-reset'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (res.statusCode != 200) {
+      final err = jsonDecode(res.body);
+      throw Exception(err['detail'] ?? 'Error al enviar el correo');
+    }
+  }
+
+  Future<void> resetPassword(String email, String code, String newPassword) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'code': code, 'new_password': newPassword}),
+    );
+    if (res.statusCode != 200) {
+      final err = jsonDecode(res.body);
+      throw Exception(err['detail'] ?? 'Error al restablecer la contraseña');
+    }
   }
 
   Future<void> logout() async {
