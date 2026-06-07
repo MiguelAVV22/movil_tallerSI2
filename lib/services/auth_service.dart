@@ -1,30 +1,32 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:taller_movil/core/config/app_config.dart';
+
+import 'api_config.dart';
+import 'api_helper.dart';
 
 class AuthService {
-  static final _baseUrl = '${AppConfig.baseUrl}/api/acceso';
-  static const _tokenKey  = 'access_token';
-  static const _userKey   = 'taller_user';
+  static final _baseUrl = ApiConfig.api('acceso');
+  static const _tokenKey = 'access_token';
+  static const _userKey = 'taller_user';
 
-  // ── CU02 - Iniciar sesión ────────────────────────────────
   Future<Map<String, dynamic>> login(String email, String password) async {
-    final res = await http.post(
-      Uri.parse('$_baseUrl/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+    final res = await ejecutarPeticion(
+      http.post(
+        Uri.parse('$_baseUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      ),
     );
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       await _saveSession(data);
       return data;
     }
-    final err = jsonDecode(res.body);
-    throw Exception(err['detail'] ?? 'Error al iniciar sesión');
+    throw Exception(detalleRespuesta(res, fallback: 'Error al iniciar sesion'));
   }
 
-  // ── CU01 - Registrarse ───────────────────────────────────
   Future<Map<String, dynamic>> register({
     required String email,
     required String username,
@@ -39,55 +41,53 @@ class AuthService {
       if (fullName != null && fullName.isNotEmpty) 'full_name': fullName,
       if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
     };
-    final res = await http.post(
-      Uri.parse('$_baseUrl/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
+    final res = await ejecutarPeticion(
+      http.post(
+        Uri.parse('$_baseUrl/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
     );
     if (res.statusCode == 201) {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       await _saveSession(data);
       return data;
     }
-    final err = jsonDecode(res.body);
-    throw Exception(err['detail'] ?? 'Error al registrarse');
+    throw Exception(detalleRespuesta(res, fallback: 'Error al registrarse'));
   }
 
   Future<void> changePassword(String currentPassword, String newPassword) async {
     final token = await getToken();
-    final res = await http.post(
-      Uri.parse('$_baseUrl/change-password'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}),
+    final res = await ejecutarPeticion(
+      http.post(
+        Uri.parse('$_baseUrl/change-password'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}),
+      ),
     );
-    if (res.statusCode != 200) {
-      final err = jsonDecode(res.body);
-      throw Exception(err['detail'] ?? 'Error al cambiar la contraseña');
-    }
+    verificarRespuesta(res);
   }
 
   Future<void> requestReset(String email) async {
-    final res = await http.post(
-      Uri.parse('$_baseUrl/request-reset'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email}),
+    final res = await ejecutarPeticion(
+      http.post(
+        Uri.parse('$_baseUrl/request-reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      ),
     );
-    if (res.statusCode != 200) {
-      final err = jsonDecode(res.body);
-      throw Exception(err['detail'] ?? 'Error al enviar el correo');
-    }
+    verificarRespuesta(res);
   }
 
   Future<void> resetPassword(String email, String code, String newPassword) async {
-    final res = await http.post(
-      Uri.parse('$_baseUrl/reset-password'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'code': code, 'new_password': newPassword}),
+    final res = await ejecutarPeticion(
+      http.post(
+        Uri.parse('$_baseUrl/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'code': code, 'new_password': newPassword}),
+      ),
     );
-    if (res.statusCode != 200) {
-      final err = jsonDecode(res.body);
-      throw Exception(err['detail'] ?? 'Error al restablecer la contraseña');
-    }
+    verificarRespuesta(res);
   }
 
   Future<void> logout() async {

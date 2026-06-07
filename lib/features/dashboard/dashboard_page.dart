@@ -205,6 +205,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _QuickCard(icon: Icons.warning_amber_outlined,   label: 'Reportar Emergencia', iconBg: const Color(0xFFFEF2F2), iconColor: AppColors.danger,   onTap: () => Navigator.pushNamed(ctx, '/emergencias/reportar')),
         _QuickCard(icon: Icons.directions_car,           label: 'Mis Vehículos',       iconBg: const Color(0xFFEFF6FF), iconColor: AppColors.primary,  onTap: () => Navigator.pushNamed(ctx, '/acceso/mis-vehiculos')),
         _QuickCard(icon: Icons.track_changes_outlined,   label: 'Mis Solicitudes',     iconBg: const Color(0xFFEFF6FF), iconColor: AppColors.primary,  onTap: () => Navigator.pushNamed(ctx, '/solicitudes/estado')),
+        _QuickCard(icon: Icons.history,                  label: 'Historial',           iconBg: const Color(0xFFF5F3FF), iconColor: const Color(0xFF7C3AED), onTap: () => Navigator.pushNamed(ctx, '/cliente/historial')),
         _QuickCard(icon: Icons.chat_bubble_outline,      label: 'Chat',                iconBg: const Color(0xFFECFDF5), iconColor: AppColors.success,  onTap: () => Navigator.pushNamed(ctx, '/comunicacion/chat')),
       ];
     }

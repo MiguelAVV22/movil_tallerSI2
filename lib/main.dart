@@ -48,6 +48,7 @@ import 'package:taller_movil/features/comunicacion/chat/chat_page.dart';
 import 'package:taller_movil/features/comunicacion/notificaciones/notificaciones_page.dart';
 import 'package:taller_movil/features/comunicacion/ver_tecnico_mapa/ver_tecnico_mapa_page.dart';
 import 'package:taller_movil/features/comunicacion/compartir_ubicacion/compartir_ubicacion_page.dart';
+import 'package:taller_movil/features/cliente/historial_servicios_page.dart' as cliente;
 
 // Reportes
 import 'package:taller_movil/features/reportes/historial_servicios/historial_servicios_page.dart';
@@ -129,6 +130,7 @@ class RutaSegura extends StatelessWidget {
 
         // ── Reportes ──────────────────────────────────────
         '/reportes/historial':          (_) => const HistorialServiciosPage(),
+        '/cliente/historial':           (_) => const cliente.HistorialServiciosPage(),
         '/reportes/calificar':          (_) => const CalificarServicioPage(),
         '/mantenimiento/recordatorios': (_) => const RecordatoriosMantenimientoPage(),
         '/reportes/metricas-taller':    (_) => const MetricasTallerPage(),

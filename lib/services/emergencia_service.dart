@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:taller_movil/core/config/app_config.dart';
 import 'auth_service.dart';
+import 'api_config.dart';
 import 'api_helper.dart';
 
 MediaType _fotoMediaType(String? mimeType, String filename) {
@@ -20,8 +20,8 @@ MediaType _fotoMediaType(String? mimeType, String filename) {
 }
 
 class EmergenciaService {
-  static final _baseUrl = '${AppConfig.baseUrl}/api/emergencias';
-  static String get apiOrigin => AppConfig.baseUrl;
+  static final _baseUrl = ApiConfig.api('emergencias');
+  static String get apiOrigin => ApiConfig.origin;
 
   final _auth = AuthService();
 
@@ -217,7 +217,7 @@ class EmergenciaService {
   /// CU11 – Cliente cancela su incidente.
   Future<Map<String, dynamic>> cancelarSolicitud(int incidenteId) async {
     final res = await http.patch(
-      Uri.parse('${AppConfig.baseUrl}/api/solicitudes/$incidenteId/cancelar'),
+      Uri.parse('${ApiConfig.api('solicitudes')}/$incidenteId/cancelar'),
       headers: await _authHeaders(),
       body: jsonEncode({}),
     );
@@ -230,9 +230,54 @@ class EmergenciaService {
   }
 
   /// CU29 – Historial de servicios (cliente y taller).
+  /// CU23 - Calificar servicio.
+  Future<Map<String, dynamic>> calificarServicio({
+    required int incidenteId,
+    required int puntaje,
+    String? comentario,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_baseUrl/$incidenteId/calificacion'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'puntaje': puntaje,
+        if (comentario != null && comentario.isNotEmpty) 'comentario': comentario,
+      }),
+    );
+    if (res.statusCode == 201) return jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode == 401 || res.statusCode == 403) throw TokenExpiradoException();
+    final detail = res.body.isNotEmpty
+        ? (jsonDecode(res.body) as Map<String, dynamic>)['detail']
+        : null;
+    throw Exception(detail ?? 'Error al enviar calificacion (${res.statusCode})');
+  }
+
+  /// CU11 - Gestionar solicitud (aceptar/rechazar/cancelar).
+  Future<Map<String, dynamic>> gestionarSolicitud({
+    required int incidenteId,
+    required String estado,
+    String? comentario,
+  }) async {
+    final body = <String, dynamic>{
+      'estado': estado,
+      if (comentario != null && comentario.isNotEmpty) 'comentario': comentario,
+    };
+    final res = await http.put(
+      Uri.parse('$_baseUrl/$incidenteId/estado'),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode == 401 || res.statusCode == 403) throw TokenExpiradoException();
+    final detail = res.body.isNotEmpty
+        ? (jsonDecode(res.body) as Map<String, dynamic>)['detail']
+        : null;
+    throw Exception(detail ?? 'Error al gestionar solicitud (${res.statusCode})');
+  }
+
   Future<List<Map<String, dynamic>>> listarHistorial() async {
     final res = await http.get(
-      Uri.parse('${AppConfig.baseUrl}/api/reportes/historial'),
+      Uri.parse(ApiConfig.api('reportes/historial')),
       headers: await _authHeaders(),
     );
     if (res.statusCode == 200) {
@@ -248,7 +293,7 @@ class EmergenciaService {
     required String metodo,
   }) async {
     final res = await http.post(
-      Uri.parse('${AppConfig.baseUrl}/api/pagos/pagos'),
+      Uri.parse(ApiConfig.api('pagos/pagos')),
       headers: await _authHeaders(),
       body: jsonEncode({'cotizacion_id': cotizacionId, 'metodo': metodo}),
     );
@@ -263,7 +308,7 @@ class EmergenciaService {
   /// CU20 – Listar cotizaciones del cliente (para pago).
   Future<List<Map<String, dynamic>>> listarMisCotizaciones() async {
     final res = await http.get(
-      Uri.parse('${AppConfig.baseUrl}/api/pagos/mis-cotizaciones'),
+      Uri.parse(ApiConfig.api('pagos/mis-cotizaciones')),
       headers: await _authHeaders(),
     );
     if (res.statusCode == 200) {

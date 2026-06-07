@@ -103,7 +103,7 @@ final _allSections = [
     icon: Icons.bar_chart_outlined,
     label: 'Reportes',
     items: [
-      _ItemDef(label: 'Historial de Servicios', route: '/reportes/historial',         roles: ['cliente', 'taller']),
+      _ItemDef(label: 'Historial de Servicios', route: '/cliente/historial',          roles: ['cliente', 'taller']),
       _ItemDef(label: 'Calificar Servicio',     route: '/reportes/calificar',         roles: ['cliente']),
       _ItemDef(label: 'Recordatorios',          route: '/mantenimiento/recordatorios', roles: ['cliente']),
       _ItemDef(label: 'Métricas del Taller',    route: '/reportes/metricas-taller',   roles: ['taller']),

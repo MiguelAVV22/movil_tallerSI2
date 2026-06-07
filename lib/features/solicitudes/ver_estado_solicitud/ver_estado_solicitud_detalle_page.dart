@@ -3,6 +3,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/services/api_helper.dart';
 import 'package:taller_movil/services/emergencia_service.dart';
+import 'package:taller_movil/widgets/incidente_taller_map.dart';
+import 'package:taller_movil/features/cliente/pago_servicio_page.dart';
+import 'package:taller_movil/features/cliente/calificar_servicio_page.dart';
 
 class VerEstadoSolicitudDetallePage extends StatefulWidget {
   const VerEstadoSolicitudDetallePage({super.key, required this.item});
@@ -126,6 +129,13 @@ class _VerEstadoSolicitudDetallePageState extends State<VerEstadoSolicitudDetall
     final lon = inc['longitud'];
     final tlat = asig?['taller_latitud'];
     final tlon = asig?['taller_longitud'];
+    final ilat = _toD(lat);
+    final ilon = _toD(lon);
+    final wlat = _toD(tlat);
+    final wlon = _toD(tlon);
+    final mapaOk = ilat != null && ilon != null && wlat != null && wlon != null;
+    final asgEst = asig?['estado'] as String? ?? '';
+    final puedeCiclo3 = estado == 'resuelto' && asgEst == 'finalizado';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -156,10 +166,22 @@ class _VerEstadoSolicitudDetallePageState extends State<VerEstadoSolicitudDetall
                 const SizedBox(height: 8),
                 Text('Taller: ${asig?['taller_nombre']?.toString() ?? 'Sin asignar'}'),
                 if (asig?['eta'] != null) Text('Tiempo estimado: ${asig!['eta']} min'),
-                if (tlat != null && tlon != null)
-                  Text('Ubicación taller: $tlat, $tlon'),
-                if (lat != null && lon != null)
-                  Text('Tu ubicación: $lat, $lon'),
+                if (mapaOk)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: IncidenteTallerMap(
+                      incidenteLat: ilat,
+                      incidenteLng: ilon,
+                      tallerLat: wlat,
+                      tallerLng: wlon,
+                      height: 220,
+                    ),
+                  )
+                else ...[
+                  if (tlat != null && tlon != null)
+                    Text('Ubicación taller: $tlat, $tlon'),
+                  if (lat != null && lon != null) Text('Tu ubicación: $lat, $lon'),
+                ],
                 const Divider(height: 24),
                 const Text('Descripción del problema', style: TextStyle(color: Color(0xFF6B7280))),
                 const SizedBox(height: 6),
@@ -257,10 +279,55 @@ class _VerEstadoSolicitudDetallePageState extends State<VerEstadoSolicitudDetall
               icon: Icons.block_outlined,
               onTap: _gestionandoId == id ? null : () => _accionSolicitud(incidenteId: id, accion: 'cancelado'),
             ),
+          if (puedeCiclo3) ...[
+            const SizedBox(height: 12),
+            _ActionButton(
+              label: 'Pago del servicio',
+              color: const Color(0xFF16A34A),
+              icon: Icons.payments,
+              onTap: () async {
+                final ok = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PagoServicioPage(incidenteId: id),
+                  ),
+                );
+                if (ok == true && context.mounted) {
+                  setState(() {});
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            _ActionButton(
+              label: 'Calificar servicio',
+              color: const Color(0xFF00135b),
+              icon: Icons.star_rate,
+              onTap: () async {
+                final ok = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CalificarServicioPage(
+                      incidenteId: id,
+                      tallerNombre: asig?['taller_nombre']?.toString(),
+                      servicioDescripcion: descripcion,
+                    ),
+                  ),
+                );
+                if (ok == true && context.mounted) setState(() {});
+              },
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+double? _toD(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v);
+  return null;
 }
 
 class _ActionButton extends StatelessWidget {

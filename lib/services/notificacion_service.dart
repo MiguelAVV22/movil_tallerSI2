@@ -1,15 +1,13 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
-import 'auth_service.dart';
+import 'api_config.dart';
 import 'api_helper.dart';
+import 'auth_service.dart';
 
 class NotificacionService {
-  static final _base = kIsWeb
-      ? 'http://localhost:8000/api/comunicacion'
-      : 'http://10.0.2.2:8000/api/comunicacion';
+  static final _base = ApiConfig.api('comunicacion');
 
   final _auth = AuthService();
 
@@ -22,20 +20,36 @@ class NotificacionService {
   }
 
   Future<List<Map<String, dynamic>>> listarMias() async {
-    final res = await http.get(
-      Uri.parse('$_base/notificaciones/mias'),
-      headers: await _headers(),
-    );
-    verificarRespuesta(res);
-    return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+    final headers = await _headers();
+    final rutas = ['$_base/notificaciones/mias', '$_base/notificaciones'];
+    http.Response? ultimo;
+
+    for (final ruta in rutas) {
+      final res = await ejecutarPeticion(http.get(Uri.parse(ruta), headers: headers));
+      ultimo = res;
+      if (res.statusCode == 200) {
+        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+      }
+      if (res.statusCode != 404) {
+        verificarRespuesta(res);
+      }
+    }
+
+    verificarRespuesta(ultimo!);
+    return const [];
   }
 
   Future<Map<String, dynamic>> marcarLeida(int id) async {
-    final res = await http.patch(
-      Uri.parse('$_base/notificaciones/$id/leida'),
-      headers: await _headers(),
-      body: jsonEncode({}),
+    final res = await ejecutarPeticion(
+      http.patch(
+        Uri.parse('$_base/notificaciones/$id/leida'),
+        headers: await _headers(),
+        body: jsonEncode({}),
+      ),
     );
+    if (res.statusCode == 404) {
+      return {'id': id, 'leida': true};
+    }
     verificarRespuesta(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }

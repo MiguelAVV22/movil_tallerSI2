@@ -81,10 +81,21 @@ class _ReportarEmergenciaPageState extends State<ReportarEmergenciaPage> {
         return;
       }
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _mensajeErrorAmigable(e);
         _loading = false;
       });
     }
+  }
+
+  String _mensajeErrorAmigable(Object e) {
+    final raw = e.toString().replaceFirst('Exception: ', '').trim();
+    final lower = raw.toLowerCase();
+    if (lower.contains('formatexception') ||
+        lower.contains('unexpected character') ||
+        lower.contains('internal server error')) {
+      return 'El servidor no pudo registrar la emergencia en este momento. Intenta nuevamente en unos segundos.';
+    }
+    return raw;
   }
 
   @override
