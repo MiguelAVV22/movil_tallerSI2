@@ -200,6 +200,28 @@ class _VerEstadoSolicitudPageState extends State<VerEstadoSolicitudPage> {
                                       icon: Icons.schedule,
                                       text: 'ETA: ${asig['eta']} min',
                                     ),
+                                  const SizedBox(height: 10),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      icon: const Icon(Icons.timeline, size: 18),
+                                      label: const Text('Ver seguimiento en tiempo real',
+                                        style: TextStyle(fontWeight: FontWeight.w600)),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.primary,
+                                        side: const BorderSide(color: AppColors.primary),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: () {
+                                        Navigator.pushNamed(
+                                          context,
+                                          '/seguimiento',
+                                          arguments: id,
+                                        );
+                                      },
+                                    ),
+                                  ),
                                   // CU31 — Confirmar llegada del técnico
                                   if ((asig['estado'] == 'en_camino' || asig['estado'] == 'aceptado')) ...[
                                     const SizedBox(height: 10),

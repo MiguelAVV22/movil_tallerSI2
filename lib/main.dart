@@ -58,6 +58,12 @@ import 'package:taller_movil/features/reportes/metricas_taller/metricas_taller_p
 import 'package:taller_movil/features/reportes/metricas_globales/metricas_globales_page.dart';
 import 'package:taller_movil/features/reportes/auditoria/auditoria_page.dart';
 
+// Seguimiento en Tiempo Real
+import 'package:taller_movil/features/seguimiento/seguimiento_page.dart';
+import 'package:taller_movil/features/seguimiento/seguimiento_tecnico_page.dart';
+
+
+
 void main() {
   runApp(const RutaSegura());
 }
@@ -136,6 +142,10 @@ class RutaSegura extends StatelessWidget {
         '/reportes/metricas-taller':    (_) => const MetricasTallerPage(),
         '/reportes/metricas-globales':  (_) => const MetricasGlobalesPage(),
         '/reportes/auditoria':          (_) => const AuditoriaPage(),
+
+        // ── Seguimiento en Tiempo Real ────────────────────
+        '/seguimiento':                 (_) => const SeguimientoPage(),
+        '/seguimiento-tecnico':         (_) => const SeguimientoTecnicoPage(),
       },
     );
   }

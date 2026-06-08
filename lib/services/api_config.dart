@@ -5,10 +5,22 @@ class ApiConfig {
   // flutter run --dart-define=API_BASE_URL=http://192.168.1.35:8000
   static const String origin = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'http://192.168.0.2:8000',
   );
 
   static String api(String path) => '$origin/api/$path';
+
+  static String get wsBaseUrl {
+    try {
+      final uri = Uri.parse(origin);
+      final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
+      final portPart = uri.hasPort ? ':${uri.port}' : '';
+      return '$scheme://${uri.host}$portPart';
+    } catch (_) {
+      // Fallback
+      return origin.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
+    }
+  }
 
   static String asset(String path) {
     if (path.isEmpty) return origin;

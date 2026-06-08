@@ -138,7 +138,14 @@ class _ActualizarEstadoServicioPageState
           ),
         );
         if (activar == true && mounted) {
-          Navigator.pushNamed(context, '/comunicacion/compartir-ubicacion');
+          Navigator.pushNamed(
+            context,
+            '/seguimiento-tecnico',
+            arguments: {
+              'incidente_id': a.incidenteId,
+              'tecnico_id': a.tecnicoId ?? 0,
+            },
+          );
         }
       }
     } catch (e) {
@@ -477,6 +484,37 @@ class _AsignacionCard extends StatelessWidget {
                 }).toList(),
               ),
             ),
+          
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/seguimiento-tecnico',
+                    arguments: {
+                      'incidente_id': asignacion.incidenteId,
+                      'tecnico_id': asignacion.tecnicoId ?? 0,
+                    },
+                  );
+                },
+                icon: const Icon(Icons.gps_fixed, size: 16),
+                label: const Text('Transmitir Seguimiento GPS',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  foregroundColor: const Color(0xFF10B981),
+                  side: BorderSide(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
