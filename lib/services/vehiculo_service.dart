@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
 import 'api_helper.dart';
@@ -43,14 +44,35 @@ class VehiculoService {
   }
 
   Future<List<Map<String, dynamic>>> listarVehiculos() async {
-    final res = await ejecutarPeticion(
-      http.get(
-        Uri.parse('$_baseUrl/vehiculos'),
-        headers: await _authHeaders(),
-      ),
-    );
-    verificarRespuesta(res);
-    return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+    try {
+      final res = await ejecutarPeticion(
+        http.get(
+          Uri.parse('$_baseUrl/vehiculos'),
+          headers: await _authHeaders(),
+        ),
+      );
+      verificarRespuesta(res);
+      final list = (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+
+      // Guardar en caché local
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_vehiculos', jsonEncode(list));
+
+      return list;
+    } catch (e) {
+      // Si falla la red, intentar cargar desde caché local
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getString('cached_vehiculos');
+        if (cached != null) {
+          final list = (jsonDecode(cached) as List).cast<dynamic>();
+          return list.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        }
+      } catch (_) {
+        // Ignorar fallos al leer caché y re-lanzar error original
+      }
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> actualizarVehiculo({

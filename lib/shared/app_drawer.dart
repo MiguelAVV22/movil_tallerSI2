@@ -49,6 +49,7 @@ final _allSections = [
       _ItemDef(label: 'Reportar Emergencia',   route: '/emergencias/reportar',    roles: ['cliente']),
       _ItemDef(label: 'Enviar Audio',          route: '/emergencias/audio',       roles: ['cliente']),
       _ItemDef(label: 'Agregar Descripción',   route: '/emergencias/descripcion', roles: ['cliente']),
+      _ItemDef(label: 'Estado Sincronización', route: '/emergencias/sync-progress', roles: ['cliente']),
     ],
   ),
   _SectionDef(

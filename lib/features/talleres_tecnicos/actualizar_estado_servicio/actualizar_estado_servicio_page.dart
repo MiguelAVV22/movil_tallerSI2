@@ -144,6 +144,8 @@ class _ActualizarEstadoServicioPageState
             arguments: {
               'incidente_id': a.incidenteId,
               'tecnico_id': a.tecnicoId ?? 0,
+              'incidente_latitud': a.incidenteLatitud,
+              'incidente_longitud': a.incidenteLongitud,
             },
           );
         }
@@ -498,6 +500,8 @@ class _AsignacionCard extends StatelessWidget {
                     arguments: {
                       'incidente_id': asignacion.incidenteId,
                       'tecnico_id': asignacion.tecnicoId ?? 0,
+                      'incidente_latitud': asignacion.incidenteLatitud,
+                      'incidente_longitud': asignacion.incidenteLongitud,
                     },
                   );
                 },

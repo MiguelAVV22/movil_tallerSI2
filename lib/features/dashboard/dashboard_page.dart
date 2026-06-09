@@ -4,6 +4,8 @@ import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/services/auth_service.dart';
 import 'package:taller_movil/services/notificacion_service.dart';
 import 'package:taller_movil/services/emergencia_service.dart';
+import 'package:taller_movil/services/emergencia_local_service.dart';
+import 'package:taller_movil/services/sync_service.dart';
 import 'package:taller_movil/services/api_helper.dart';
 import 'package:taller_movil/shared/app_drawer.dart';
 import 'dart:async';
@@ -22,18 +24,42 @@ class _DashboardPageState extends State<DashboardPage> {
   int _notifsNoLeidas = 0;
   Timer? _notifPoll;
 
+  int _pendientesSyncCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadUser();
     _cargarNotifNoLeidas();
+    _actualizarPendientesSync();
     _notifPoll = Timer.periodic(const Duration(seconds: 20), (_) => _cargarNotifNoLeidas());
+    
+    // Escuchar el servicio de sincronización para actualizar el contador automáticamente
+    SyncService().estaSincronizando.addListener(_onSyncStatusChange);
   }
 
   @override
   void dispose() {
     _notifPoll?.cancel();
+    SyncService().estaSincronizando.removeListener(_onSyncStatusChange);
     super.dispose();
+  }
+
+  void _onSyncStatusChange() {
+    if (!SyncService().estaSincronizando.value) {
+      _actualizarPendientesSync();
+    }
+  }
+
+  Future<void> _actualizarPendientesSync() async {
+    try {
+      final pendientes = await EmergenciaLocalService.obtenerPendientesSync();
+      if (mounted) {
+        setState(() {
+          _pendientesSyncCount = pendientes.length;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadUser() async {
@@ -171,6 +197,54 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ],
             ),
+
+            if (_isCliente && _pendientesSyncCount > 0) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_queue_rounded, color: Colors.orange, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Tienes $_pendientesSyncCount ${_pendientesSyncCount == 1 ? 'reporte' : 'reportes'} de emergencia pendiente(s) de envío.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, '/emergencias/sync-progress');
+                        _actualizarPendientesSync();
+                      },
+                      child: Text(
+                        'Ver Progreso',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // SOS Button — visible solo para clientes
             if (_isCliente) ...[

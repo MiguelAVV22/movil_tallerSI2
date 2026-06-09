@@ -21,6 +21,8 @@ import 'package:taller_movil/features/dashboard/dashboard_page.dart';
 import 'package:taller_movil/features/emergencias/reportar_emergencia/reportar_emergencia_page.dart';
 import 'package:taller_movil/features/emergencias/enviar_audio/enviar_audio_page.dart';
 import 'package:taller_movil/features/emergencias/agregar_descripcion/agregar_descripcion_page.dart';
+import 'package:taller_movil/features/emergencias/sync_progress/sync_progress_page.dart';
+import 'package:taller_movil/services/sync_service.dart';
 
 // Solicitudes
 import 'package:taller_movil/features/solicitudes/ver_estado_solicitud/ver_estado_solicitud_page.dart';
@@ -65,6 +67,8 @@ import 'package:taller_movil/features/seguimiento/seguimiento_tecnico_page.dart'
 
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SyncService().inicializar();
   runApp(const RutaSegura());
 }
 
@@ -105,6 +109,7 @@ class RutaSegura extends StatelessWidget {
         '/emergencias/audio':        (ctx) => EnviarAudioPage(
                                      incidenteId: (ModalRoute.of(ctx)?.settings.arguments as int?) ?? 0),
         '/emergencias/descripcion':  (_) => const AgregarDescripcionPage(),
+        '/emergencias/sync-progress': (_) => const SyncProgressPage(),
         // ubicacion y fotos se navegan desde ReportarEmergencia (requieren incidenteId)
 
         // ── Solicitudes ───────────────────────────────────

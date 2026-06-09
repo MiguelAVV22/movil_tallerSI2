@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:taller_movil/services/api_config.dart';
+
+import 'websocket_client_stub.dart'
+    if (dart.library.io) 'websocket_client_io.dart'
+    if (dart.library.html) 'websocket_client_web.dart';
 
 class WebSocketService {
   final int incidenteId;
@@ -10,17 +13,20 @@ class WebSocketService {
   final void Function(dynamic error) onError;
   final void Function() onDone;
 
-  WebSocket? _socket;
+  late final BaseWebSocketClient _client;
   bool _isConnecting = false;
+  bool _connected = false;
 
   WebSocketService({
     required this.incidenteId,
     required this.onMessageReceived,
     required this.onError,
     required this.onDone,
-  });
+  }) {
+    _client = createWebSocketClient();
+  }
 
-  bool get isConnected => _socket != null && _socket!.readyState == WebSocket.open;
+  bool get isConnected => _connected && _client.isConnected;
   bool get isConnecting => _isConnecting;
 
   Future<void> connect() async {
@@ -31,14 +37,16 @@ class WebSocketService {
     debugPrint('WebSocketService: Conectándose a $url');
 
     try {
-      _socket = await WebSocket.connect(url).timeout(const Duration(seconds: 10));
-      _isConnecting = false;
-      debugPrint('WebSocketService: Conectado exitosamente');
-
-      _socket!.listen(
-        (message) {
+      _client.connect(
+        url,
+        onOpen: () {
+          _isConnecting = false;
+          _connected = true;
+          debugPrint('WebSocketService: Conectado exitosamente');
+        },
+        onMessage: (message) {
           try {
-            final decoded = jsonDecode(message as String);
+            final decoded = jsonDecode(message);
             if (decoded is Map<String, dynamic>) {
               onMessageReceived(decoded);
             }
@@ -49,20 +57,20 @@ class WebSocketService {
         onError: (err) {
           debugPrint('WebSocketService: Error en stream: $err');
           _isConnecting = false;
+          _connected = false;
           onError(err);
         },
-        onDone: () {
+        onClose: () {
           debugPrint('WebSocketService: Conexión cerrada');
-          _socket = null;
           _isConnecting = false;
+          _connected = false;
           onDone();
         },
-        cancelOnError: true,
       );
     } catch (e) {
       debugPrint('WebSocketService: Falló conexión: $e');
-      _socket = null;
       _isConnecting = false;
+      _connected = false;
       onError(e);
       onDone();
     }
@@ -70,17 +78,15 @@ class WebSocketService {
 
   void sendMessage(Map<String, dynamic> data) {
     if (isConnected) {
-      _socket!.add(jsonEncode(data));
+      _client.send(jsonEncode(data));
     } else {
       debugPrint('WebSocketService: No se puede enviar, no conectado');
     }
   }
 
   Future<void> disconnect() async {
-    if (_socket != null) {
-      await _socket!.close();
-      _socket = null;
-    }
+    _client.close();
     _isConnecting = false;
+    _connected = false;
   }
 }

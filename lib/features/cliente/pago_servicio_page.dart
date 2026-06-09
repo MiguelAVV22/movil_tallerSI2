@@ -43,14 +43,10 @@ class _PagoServicioPageState extends State<PagoServicioPage> {
     }
   }
 
-  Future<void> _pagar() async {
-    final c = _data?['cotizacion'] as Map<String, dynamic>?;
-    if (c == null) return;
-    final id = c['id'] as int?;
-    if (id == null) return;
+  Future<void> _ejecutarPago(int cotizacionId) async {
     setState(() => _paying = true);
     try {
-      await _pago.realizarPago(cotizacionId: id, metodo: _metodo);
+      await _pago.realizarPago(cotizacionId: cotizacionId, metodo: _metodo);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -75,6 +71,149 @@ class _PagoServicioPageState extends State<PagoServicioPage> {
     } finally {
       if (mounted) setState(() => _paying = false);
     }
+  }
+
+  void _pagar() {
+    final c = _data?['cotizacion'] as Map<String, dynamic>?;
+    if (c == null) return;
+    final id = c['id'] as int?;
+    if (id == null) return;
+
+    if (_metodo == 'qr') {
+      _mostrarQrDialog(id);
+    } else if (_metodo == 'tarjeta') {
+      _mostrarTarjetaDialog(id);
+    } else {
+      _ejecutarPago(id);
+    }
+  }
+
+  void _mostrarQrDialog(int id) {
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Escanea el Código QR', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Realiza el pago escaneando este código con la app de tu banco:'),
+            const SizedBox(height: 16),
+            Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.network(
+                'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=PagoTaller_Cotizacion_$id',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.qr_code, size: 100, color: Colors.grey)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Una vez transferido, confirma el pago.',
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00135b),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            child: const Text('Confirmar Pago', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ).then((confirmado) {
+      if (confirmado == true) _ejecutarPago(id);
+    });
+  }
+
+  void _mostrarTarjetaDialog(int id) {
+    final formKey = GlobalKey<FormState>();
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pago con Tarjeta', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Ingresa los datos de tu tarjeta de crédito o débito:'),
+              const SizedBox(height: 16),
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Número de Tarjeta',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.credit_card),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (val) => (val == null || val.length < 16) ? 'Número inválido' : null,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'MM/AA',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.datetime,
+                      validator: (val) => (val == null || val.isEmpty) ? 'Inválido' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'CVV',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      validator: (val) => (val == null || val.length < 3) ? 'Inválido' : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() == true) Navigator.pop(ctx, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00135b),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            child: const Text('Pagar Ahora', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ).then((confirmado) {
+      if (confirmado == true) _ejecutarPago(id);
+    });
   }
 
   @override
@@ -161,7 +300,7 @@ class _PagoServicioPageState extends State<PagoServicioPage> {
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: ya || _paying ? null : _pagar,
+                onPressed: ya || _paying ? null : () => _pagar(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF16A34A),
                   disabledBackgroundColor: const Color(0xFF9CA3AF),

@@ -48,4 +48,34 @@ class PagoService {
     verificarRespuesta(res, esperado: 201);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
+
+  /// CU20 · Confirmar / Rechazar cotización (cliente)
+  Future<Map<String, dynamic>> actualizarEstadoCotizacion({
+    required int cotizacionId,
+    required String estado,
+  }) async {
+    final res = await http.patch(
+      Uri.parse('$_baseUrl/cotizaciones/$cotizacionId/estado'),
+      headers: await _headers(),
+      body: jsonEncode({'estado': estado}),
+    );
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw TokenExpiradoException();
+    }
+    verificarRespuesta(res, esperado: 200);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// CU20 · Listar cotizaciones del taller
+  Future<List<Map<String, dynamic>>> listarCotizacionesTaller() async {
+    final res = await http.get(
+      Uri.parse('$_baseUrl/cotizaciones'),
+      headers: await _headers(),
+    );
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw TokenExpiradoException();
+    }
+    verificarRespuesta(res, esperado: 200);
+    return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+  }
 }

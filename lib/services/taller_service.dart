@@ -15,6 +15,8 @@ class AsignacionModel {
   final String? observacion;
   final String createdAt;
   final bool esSos;
+  final double? incidenteLatitud;
+  final double? incidenteLongitud;
 
   AsignacionModel({
     required this.id,
@@ -26,6 +28,8 @@ class AsignacionModel {
     this.observacion,
     required this.createdAt,
     this.esSos = false,
+    this.incidenteLatitud,
+    this.incidenteLongitud,
   });
 
   factory AsignacionModel.fromJson(Map<String, dynamic> j) => AsignacionModel(
@@ -38,6 +42,8 @@ class AsignacionModel {
         observacion: j['observacion'] as String?,
         createdAt: j['created_at'] as String,
         esSos: j['es_sos'] as bool? ?? false,
+        incidenteLatitud: (j['incidente_latitud'] as num?)?.toDouble(),
+        incidenteLongitud: (j['incidente_longitud'] as num?)?.toDouble(),
       );
 }
 

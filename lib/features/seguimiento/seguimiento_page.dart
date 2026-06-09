@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/features/seguimiento/websocket_service.dart';
+import 'package:taller_movil/services/emergencia_service.dart';
 
 class SeguimientoPage extends StatefulWidget {
   const SeguimientoPage({super.key});
@@ -24,6 +27,14 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
   String _statusConexion = 'Conectando...';
   bool _tieneError = false;
   String _errorMsg = '';
+
+  // Variables para el mapa en tiempo real
+  double? _clienteLat;
+  double? _clienteLng;
+  bool _cargandoClienteUbicacion = false;
+  final MapController _mapController = MapController();
+  bool _mapaListo = false;
+  bool _firstUbicacionRecibida = false;
 
   static const Color emeraldColor = Color(0xFF10B981);
   static const Color roseColor = Color(0xFFF43F5E);
@@ -63,6 +74,15 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
       if (args is int) {
         _incidenteId = args;
         _iniciarWebSocket();
+        _obtenerUbicacionCliente();
+      } else if (args is Map<String, dynamic>) {
+        _incidenteId = args['incidenteId'] as int?;
+        _clienteLat = (args['latitud'] as num?)?.toDouble();
+        _clienteLng = (args['longitud'] as num?)?.toDouble();
+        _iniciarWebSocket();
+        if (_clienteLat == null || _clienteLng == null) {
+          _obtenerUbicacionCliente();
+        }
       } else {
         setState(() {
           _statusConexion = 'Error';
@@ -96,6 +116,14 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
           _statusConexion = 'Conectado';
           _tieneError = false;
         });
+
+        // Centrar automáticamente solo la primera vez que llegue la ubicación del técnico
+        if (!_firstUbicacionRecibida && _latitud != null && _longitud != null) {
+          _firstUbicacionRecibida = true;
+          if (_mapaListo) {
+            _recentrarMapa();
+          }
+        }
       },
       onError: (err) {
         if (!mounted) return;
@@ -116,9 +144,76 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
     _wsService!.connect();
   }
 
+  Future<void> _obtenerUbicacionCliente() async {
+    if (_incidenteId == null) return;
+    setState(() {
+      _cargandoClienteUbicacion = true;
+    });
+    try {
+      final svc = EmergenciaService();
+      final solicitudes = await svc.listarMisSolicitudes();
+      final Map<String, dynamic>? solicitud = solicitudes.cast<Map<String, dynamic>?>().firstWhere(
+        (element) => element?['incidente']?['id'] == _incidenteId,
+        orElse: () => null,
+      );
+      if (solicitud != null) {
+        final incidente = solicitud['incidente'] as Map<String, dynamic>?;
+        if (incidente != null && incidente['latitud'] != null && incidente['longitud'] != null) {
+          setState(() {
+            _clienteLat = (incidente['latitud'] as num).toDouble();
+            _clienteLng = (incidente['longitud'] as num).toDouble();
+          });
+          if (_mapaListo) {
+            _recentrarMapa();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al obtener ubicación del cliente: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _cargandoClienteUbicacion = false;
+        });
+      }
+    }
+  }
+
+  void _recentrarMapa() {
+    if (!_mapaListo) return;
+
+    // TODO: Si todavía no existen coordenadas del cliente, usar coordenadas de prueba temporalmente
+    final cLat = _clienteLat ?? -17.783013;
+    final cLng = _clienteLng ?? -63.180252;
+    final clientPos = LatLng(cLat, cLng);
+
+    try {
+      if (_latitud != null && _longitud != null) {
+        final tecnicoPos = LatLng(_latitud!, _longitud!);
+        final bounds = LatLngBounds.fromPoints([clientPos, tecnicoPos]);
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: bounds,
+            padding: const EdgeInsets.all(50.0),
+          ),
+        );
+      } else {
+        _mapController.move(clientPos, 15);
+      }
+    } catch (e) {
+      debugPrint('Error en _recentrarMapa: $e');
+      if (_latitud != null && _longitud != null) {
+        _mapController.move(LatLng(_latitud!, _longitud!), 14);
+      } else {
+        _mapController.move(clientPos, 14);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _wsService?.disconnect();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -218,6 +313,10 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
                       ),
                     ),
                   ],
+
+                  // Mapa en Tiempo Real con GPS
+                  _buildMapContainer(),
+                  const SizedBox(height: 20),
 
                   // Tarjeta Principal de Seguimiento
                   _buildMainCard(activeIndex),
@@ -579,4 +678,324 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
       ),
     );
   }
+
+  Widget _buildMapContainer() {
+    // TODO: Si todavía no existen coordenadas del cliente, usar coordenadas de prueba temporalmente
+    final cLat = _clienteLat ?? -17.783013;
+    final cLng = _clienteLng ?? -63.180252;
+    final clientPos = LatLng(cLat, cLng);
+
+    final LatLng? tecnicoPos = (_latitud != null && _longitud != null)
+        ? LatLng(_latitud!, _longitud!)
+        : null;
+
+    final hasTecnico = tecnicoPos != null;
+
+    // Calcular distancia aproximada si técnico está disponible
+    String distanciaTexto = 'Calculando...';
+    double? metros;
+    if (hasTecnico) {
+      try {
+        const distanceCalc = Distance();
+        metros = distanceCalc.distance(clientPos, tecnicoPos);
+        if (metros < 1000) {
+          distanciaTexto = '${metros.toStringAsFixed(0)} m';
+        } else {
+          distanciaTexto = '${(metros / 1000).toStringAsFixed(2)} km';
+        }
+      } catch (e) {
+        distanciaTexto = 'Error al calcular';
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B), // Slate 800
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF334155)), // Slate 700
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Área del Mapa o Placeholder
+          SizedBox(
+            height: 280,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: tecnicoPos ?? clientPos,
+                      initialZoom: 14.5,
+                      onMapReady: () {
+                        setState(() {
+                          _mapaListo = true;
+                        });
+                        _recentrarMapa();
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.taller.movil',
+                        tileBuilder: (context, tileWidget, tile) {
+                          return ColorFiltered(
+                            colorFilter: const ColorFilter.matrix([
+                              -0.9, 0, 0, 0, 255,
+                              0, -0.9, 0, 0, 255,
+                              0, 0, -0.9, 0, 255,
+                              0, 0, 0, 1, 0,
+                            ]),
+                            child: tileWidget,
+                          );
+                        },
+                      ),
+                      if (hasTecnico)
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: [clientPos, tecnicoPos],
+                              strokeWidth: 4.0,
+                              color: const Color(0xFF38BDF8),
+                            ),
+                          ],
+                        ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: clientPos,
+                            width: 44,
+                            height: 44,
+                            child: const _MapMarker(
+                              icon: Icons.person_pin_circle,
+                              color: emeraldColor,
+                              bgColor: Color(0xFF064E3B),
+                            ),
+                          ),
+                          if (hasTecnico)
+                            Marker(
+                              point: tecnicoPos,
+                              width: 44,
+                              height: 44,
+                              child: const _MapMarker(
+                                icon: Icons.local_shipping,
+                                color: Color(0xFFF59E0B),
+                                bgColor: Color(0xFF78350F),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Overlay "Esperando ubicación del técnico" si no hay coordenadas
+                  if (!hasTecnico)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Color(0xFF38BDF8),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Esperando ubicación del técnico',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _cargandoClienteUbicacion 
+                                  ? 'Cargando datos del cliente...'
+                                  : 'El técnico aún no transmite su señal GPS...',
+                              style: const TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // Botón flotante para recentrar
+                  if (_mapaListo)
+                    Positioned(
+                      bottom: 12,
+                      right: 12,
+                      child: FloatingActionButton.small(
+                        heroTag: 'recentrar_map_fab',
+                        backgroundColor: const Color(0xFF1E293B),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        onPressed: _recentrarMapa,
+                        tooltip: 'Recentrar seguimiento',
+                        child: const Icon(Icons.my_location, size: 18),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // Barra inferior de detalles (Distancia y ETA)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E293B),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.straighten_outlined,
+                          color: Color(0xFF38BDF8),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'DISTANCIA',
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              hasTecnico ? distanciaTexto : '—',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: const Color(0xFF334155),
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.speed_outlined,
+                          color: Color(0xFFF59E0B),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'ETA ESTIMADO',
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _etaMinutos != null ? '$_etaMinutos min' : '—',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Marcador personalizado del mapa ──────────────────────────
+class _MapMarker extends StatelessWidget {
+  const _MapMarker({
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+  });
+  final IconData icon;
+  final Color color, bgColor;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: 2.5),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: color, size: 22),
+      );
 }
