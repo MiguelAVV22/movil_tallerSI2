@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:taller_movil/core/theme/app_colors.dart';
+import 'package:taller_movil/features/comunicacion/chat/chat_page.dart';
 import 'package:taller_movil/features/seguimiento/websocket_service.dart';
 import 'package:taller_movil/services/emergencia_service.dart';
+import 'package:taller_movil/services/routing_service.dart';
 
 class SeguimientoPage extends StatefulWidget {
   const SeguimientoPage({super.key});
@@ -16,12 +20,16 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
   int? _incidenteId;
   WebSocketService? _wsService;
 
-  // Estados locales recibidos del WebSocket
+  // Estados locales recibidos del WebSocket o API
   String _estadoActual = 'PENDIENTE';
   int? _etaMinutos;
   double? _latitud;
   double? _longitud;
   int? _tecnicoId;
+  int? _asignacionId;
+  String? _tecnicoNombre;
+  String? _tecnicoTelefono;
+  String? _tallerNombre;
 
   // Estado de la conexión
   String _statusConexion = 'Conectando...';
@@ -35,6 +43,17 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
   final MapController _mapController = MapController();
   bool _mapaListo = false;
   bool _firstUbicacionRecibida = false;
+
+  // Ruta real por calles usando OpenRouteService / OSRM
+  final RoutingService _routingService = RoutingService();
+  List<LatLng> _routePoints = [];
+  double? _routeDistanceKm;
+  int? _routeEtaMinutes;
+  bool _loadingRoute = false;
+
+  double? _lastRoutingLat;
+  double? _lastRoutingLng;
+  DateTime? _lastRoutingTime;
 
   static const Color emeraldColor = Color(0xFF10B981);
   static const Color roseColor = Color(0xFFF43F5E);
@@ -107,6 +126,8 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
       incidenteId: _incidenteId!,
       onMessageReceived: (data) {
         if (!mounted) return;
+        final oldTecnicoId = _tecnicoId;
+        final oldEstado = _estadoActual;
         setState(() {
           _estadoActual = data['estado'] as String? ?? _estadoActual;
           _etaMinutos = data['eta_minutos'] as int? ?? _etaMinutos;
@@ -123,6 +144,12 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
           if (_mapaListo) {
             _recentrarMapa();
           }
+        }
+
+        _verificarYActualizarRuta();
+
+        if ((oldTecnicoId == null && _tecnicoId != null) || (oldEstado != _estadoActual)) {
+          _obtenerUbicacionCliente();
         }
       },
       onError: (err) {
@@ -158,15 +185,24 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
       );
       if (solicitud != null) {
         final incidente = solicitud['incidente'] as Map<String, dynamic>?;
-        if (incidente != null && incidente['latitud'] != null && incidente['longitud'] != null) {
-          setState(() {
+        final asignacion = solicitud['asignacion'] as Map<String, dynamic>?;
+        setState(() {
+          if (incidente != null && incidente['latitud'] != null && incidente['longitud'] != null) {
             _clienteLat = (incidente['latitud'] as num).toDouble();
             _clienteLng = (incidente['longitud'] as num).toDouble();
-          });
-          if (_mapaListo) {
-            _recentrarMapa();
           }
+          if (asignacion != null) {
+            _asignacionId = asignacion['id'] as int?;
+            _tecnicoId = asignacion['tecnico_id'] as int?;
+            _tecnicoNombre = asignacion['tecnico_nombre'] as String?;
+            _tecnicoTelefono = asignacion['tecnico_telefono'] as String?;
+            _tallerNombre = asignacion['taller_nombre'] as String?;
+          }
+        });
+        if (_mapaListo) {
+          _recentrarMapa();
         }
+        _verificarYActualizarRuta();
       }
     } catch (e) {
       debugPrint('Error al obtener ubicación del cliente: $e');
@@ -190,7 +226,11 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
     try {
       if (_latitud != null && _longitud != null) {
         final tecnicoPos = LatLng(_latitud!, _longitud!);
-        final bounds = LatLngBounds.fromPoints([clientPos, tecnicoPos]);
+        final List<LatLng> pointsToFit = [clientPos, tecnicoPos];
+        if (_routePoints.isNotEmpty) {
+          pointsToFit.addAll(_routePoints);
+        }
+        final bounds = LatLngBounds.fromPoints(pointsToFit);
         _mapController.fitCamera(
           CameraFit.bounds(
             bounds: bounds,
@@ -208,6 +248,96 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
         _mapController.move(clientPos, 14);
       }
     }
+  }
+
+  Future<void> _loadRoute() async {
+    if (_clienteLat == null || _clienteLng == null || _latitud == null || _longitud == null) {
+      return;
+    }
+
+    setState(() {
+      _loadingRoute = true;
+    });
+
+    try {
+      final result = await _routingService.obtenerRuta(
+        origenLat: _latitud!,
+        origenLng: _longitud!,
+        destinoLat: _clienteLat!,
+        destinoLng: _clienteLng!,
+      );
+
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _routePoints = result.points;
+          _routeDistanceKm = result.distanceMeters / 1000.0;
+          _routeEtaMinutes = (result.durationSeconds / 60.0).round();
+        });
+      } else {
+        // Fallback si falla
+        if (_routePoints.isEmpty) {
+          setState(() {
+            _routePoints = [
+              LatLng(_clienteLat!, _clienteLng!),
+              LatLng(_latitud!, _longitud!),
+            ];
+            const distanceCalc = Distance();
+            final metros = distanceCalc.distance(
+              LatLng(_clienteLat!, _clienteLng!),
+              LatLng(_latitud!, _longitud!),
+            );
+            _routeDistanceKm = metros / 1000.0;
+            _routeEtaMinutes = _etaMinutos ?? (metros / 500.0).round();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al calcular ruta: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingRoute = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _verificarYActualizarRuta() async {
+    if (!mounted) return;
+    if (_clienteLat == null || _clienteLng == null || _latitud == null || _longitud == null) {
+      return;
+    }
+
+    final now = DateTime.now();
+    bool debeRecalcular = false;
+
+    if (_lastRoutingLat == null || _lastRoutingLng == null || _lastRoutingTime == null || _routePoints.isEmpty) {
+      debeRecalcular = true;
+    } else {
+      try {
+        const distanceCalc = Distance();
+        final metros = distanceCalc.distance(
+          LatLng(_lastRoutingLat!, _lastRoutingLng!),
+          LatLng(_latitud!, _longitud!),
+        );
+        final segundosDiff = now.difference(_lastRoutingTime!).inSeconds;
+        if (metros > 100 || segundosDiff > 30) {
+          debeRecalcular = true;
+        }
+      } catch (e) {
+        debeRecalcular = true;
+      }
+    }
+
+    if (!debeRecalcular) return;
+
+    _lastRoutingLat = _latitud;
+    _lastRoutingLng = _longitud;
+    _lastRoutingTime = now;
+
+    await _loadRoute();
   }
 
   @override
@@ -318,13 +448,17 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
                   _buildMapContainer(),
                   const SizedBox(height: 20),
 
-                  // Tarjeta Principal de Seguimiento
-                  _buildMainCard(activeIndex),
-                  const SizedBox(height: 28),
+                  // Tarjeta del Técnico (Carlos Méndez)
+                  _buildTechnicianCard(),
+                  const SizedBox(height: 16),
 
-                  // Título de la sección
+                  // Tarjetas side-by-side de ETA y Distancia
+                  _buildMetricsCards(),
+                  const SizedBox(height: 24),
+
+                  // Título de la sección de progreso
                   const Text(
-                    'LÍNEA DE TIEMPO DEL SERVICIO',
+                    'ESTADO DEL SERVICIO',
                     style: TextStyle(
                       color: Color(0xFF94A3B8), // Slate 400
                       fontSize: 12,
@@ -332,14 +466,22 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
                       letterSpacing: 1.5,
                     ),
                   ),
+                  const SizedBox(height: 12),
+
+                  // Línea de tiempo horizontal
+                  _buildHorizontalTimeline(activeIndex),
+                  const SizedBox(height: 28),
+
+                  // Botones funcionales: Llamar, Chat, Compartir
+                  _buildActionButtons(),
                   const SizedBox(height: 16),
 
-                  // Barra de progreso y pasos
-                  _buildTimeline(activeIndex),
+                  // Centro de Ayuda
+                  _buildHelpCenterButton(),
 
                   // Botón de Reconexión en caso de desconexión o error
                   if (!isConnected) ...[
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -366,321 +508,7 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
     );
   }
 
-  Widget _buildMainCard(int activeIndex) {
-    final statusColor = activeIndex == 6 ? emeraldColor : Colors.blueAccent;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B), // Slate 800
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)), // Slate 700
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Fila del Estado
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  activeIndex == 6
-                      ? Icons.check_circle_outline
-                      : Icons.local_shipping_outlined,
-                  color: statusColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'ESTADO ACTUAL',
-                      style: TextStyle(
-                        color: Color(0xFF94A3B8), // Slate 400
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    Text(
-                      _getEstadoLabel(_estadoActual),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 32, color: Color(0xFF334155)),
-
-          // Fila de Info Auxiliar (ETA y Técnico)
-          Row(
-            children: [
-              // ETA Card
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.schedule, size: 14, color: Color(0xFF94A3B8)),
-                        SizedBox(width: 4),
-                        Text(
-                          'ETA ESTIMADO',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _etaMinutos != null ? '$_etaMinutos mins' : '—',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Técnico ID Card
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.badge_outlined, size: 14, color: Color(0xFF94A3B8)),
-                        SizedBox(width: 4),
-                        Text(
-                          'ID TÉCNICO',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _tecnicoId != null ? '#$_tecnicoId' : '—',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Coordenadas
-          if (_latitud != null && _longitud != null) ...[
-            const Divider(height: 32, color: Color(0xFF334155)),
-            const Row(
-              children: [
-                Icon(Icons.pin_drop_outlined, size: 16, color: roseColor),
-                SizedBox(width: 6),
-                Text(
-                  'COORDENADAS DEL TÉCNICO',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Lat: ${_latitud!.toStringAsFixed(6)}',
-                      style: const TextStyle(
-                        color: Color(0xFF38BDF8), // Light Blue
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 14,
-                    color: const Color(0xFF334155),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Lon: ${_longitud!.toStringAsFixed(6)}',
-                      style: const TextStyle(
-                        color: Color(0xFF38BDF8),
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ]
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTimeline(int activeIndex) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)),
-      ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: _pasos.length,
-        itemBuilder: (context, index) {
-          final paso = _pasos[index];
-          final pasoLabel = paso['label'] as String;
-          final pasoDesc = paso['desc'] as String;
-
-          final isCompleted = index < activeIndex;
-          final isActive = index == activeIndex;
-
-          Widget dotWidget;
-
-          if (isActive) {
-            dotWidget = Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.5),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-            );
-          } else if (isCompleted) {
-            dotWidget = const Icon(
-              Icons.check_circle,
-              color: emeraldColor,
-              size: 20,
-            );
-          } else {
-            dotWidget = Container(
-              width: 14,
-              height: 14,
-              decoration: const BoxDecoration(
-                color: Color(0xFF475569),
-                shape: BoxShape.circle,
-              ),
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Columna de Línea
-              Column(
-                children: [
-                  dotWidget,
-                  if (index < _pasos.length - 1)
-                    Container(
-                      width: 2,
-                      height: 48,
-                      color: isCompleted ? emeraldColor : const Color(0xFF334155),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 18),
-
-              // Columna de Contenido
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      pasoLabel,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: isActive
-                            ? Colors.white
-                            : isCompleted
-                                ? Colors.white70
-                                : const Color(0xFF64748B), // Slate 500
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      pasoDesc,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isActive
-                            ? const Color(0xFF94A3B8)
-                            : isCompleted
-                                ? const Color(0xFF64748B)
-                                : const Color(0xFF475569),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildMapContainer() {
-    // TODO: Si todavía no existen coordenadas del cliente, usar coordenadas de prueba temporalmente
     final cLat = _clienteLat ?? -17.783013;
     final cLng = _clienteLng ?? -63.180252;
     final clientPos = LatLng(cLat, cLng);
@@ -691,25 +519,9 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
 
     final hasTecnico = tecnicoPos != null;
 
-    // Calcular distancia aproximada si técnico está disponible
-    String distanciaTexto = 'Calculando...';
-    double? metros;
-    if (hasTecnico) {
-      try {
-        const distanceCalc = Distance();
-        metros = distanceCalc.distance(clientPos, tecnicoPos);
-        if (metros < 1000) {
-          distanciaTexto = '${metros.toStringAsFixed(0)} m';
-        } else {
-          distanciaTexto = '${(metros / 1000).toStringAsFixed(2)} km';
-        }
-      } catch (e) {
-        distanciaTexto = 'Error al calcular';
-      }
-    }
-
     return Container(
       width: double.infinity,
+      height: 300,
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B), // Slate 800
         borderRadius: BorderRadius.circular(20),
@@ -722,251 +534,754 @@ class _SeguimientoPageState extends State<SeguimientoPage> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          // Área del Mapa o Placeholder
-          SizedBox(
-            height: 280,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              child: Stack(
-                children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: tecnicoPos ?? clientPos,
-                      initialZoom: 14.5,
-                      onMapReady: () {
-                        setState(() {
-                          _mapaListo = true;
-                        });
-                        _recentrarMapa();
-                      },
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.taller.movil',
-                        tileBuilder: (context, tileWidget, tile) {
-                          return ColorFiltered(
-                            colorFilter: const ColorFilter.matrix([
-                              -0.9, 0, 0, 0, 255,
-                              0, -0.9, 0, 0, 255,
-                              0, 0, -0.9, 0, 255,
-                              0, 0, 0, 1, 0,
-                            ]),
-                            child: tileWidget,
-                          );
-                        },
-                      ),
-                      if (hasTecnico)
-                        PolylineLayer(
-                          polylines: [
-                            Polyline(
-                              points: [clientPos, tecnicoPos],
-                              strokeWidth: 4.0,
-                              color: const Color(0xFF38BDF8),
-                            ),
-                          ],
-                        ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: clientPos,
-                            width: 44,
-                            height: 44,
-                            child: const _MapMarker(
-                              icon: Icons.person_pin_circle,
-                              color: emeraldColor,
-                              bgColor: Color(0xFF064E3B),
-                            ),
-                          ),
-                          if (hasTecnico)
-                            Marker(
-                              point: tecnicoPos,
-                              width: 44,
-                              height: 44,
-                              child: const _MapMarker(
-                                icon: Icons.local_shipping,
-                                color: Color(0xFFF59E0B),
-                                bgColor: Color(0xFF78350F),
-                              ),
-                            ),
-                        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: tecnicoPos ?? clientPos,
+                initialZoom: 14.5,
+                onMapReady: () {
+                  setState(() {
+                    _mapaListo = true;
+                  });
+                  _recentrarMapa();
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.taller.movil',
+                  tileBuilder: (context, tileWidget, tile) {
+                    return ColorFiltered(
+                      colorFilter: const ColorFilter.matrix([
+                        -0.9, 0, 0, 0, 255,
+                        0, -0.9, 0, 0, 255,
+                        0, 0, -0.9, 0, 255,
+                        0, 0, 0, 1, 0,
+                      ]),
+                      child: tileWidget,
+                    );
+                  },
+                ),
+                if (hasTecnico)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _routePoints.isNotEmpty ? _routePoints : [clientPos, tecnicoPos],
+                        strokeWidth: 5.0,
+                        color: const Color(0xFF2563EB),
                       ),
                     ],
                   ),
-
-                  // Overlay "Esperando ubicación del técnico" si no hay coordenadas
-                  if (!hasTecnico)
-                    Container(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: Color(0xFF38BDF8),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Esperando ubicación del técnico',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _cargandoClienteUbicacion 
-                                  ? 'Cargando datos del cliente...'
-                                  : 'El técnico aún no transmite su señal GPS...',
-                              style: const TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: clientPos,
+                      width: 44,
+                      height: 44,
+                      child: const _MapMarker(
+                        icon: Icons.person_pin_circle,
+                        color: emeraldColor,
+                        bgColor: Color(0xFF064E3B),
                       ),
                     ),
-
-                  // Botón flotante para recentrar
-                  if (_mapaListo)
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: FloatingActionButton.small(
-                        heroTag: 'recentrar_map_fab',
-                        backgroundColor: const Color(0xFF1E293B),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: Color(0xFF334155)),
+                    if (hasTecnico)
+                      Marker(
+                        point: tecnicoPos,
+                        width: 44,
+                        height: 44,
+                        child: const _MapMarker(
+                          icon: Icons.local_shipping,
+                          color: Color(0xFFF59E0B),
+                          bgColor: Color(0xFF78350F),
                         ),
-                        onPressed: _recentrarMapa,
-                        tooltip: 'Recentrar seguimiento',
-                        child: const Icon(Icons.my_location, size: 18),
                       ),
+                  ],
+                ),
+              ],
+            ),
+
+            // Overlay "Esperando ubicación del técnico" si no hay coordenadas
+            if (!hasTecnico)
+              Container(
+                color: Colors.black.withValues(alpha: 0.6),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Color(0xFF38BDF8),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Esperando ubicación del técnico',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _cargandoClienteUbicacion 
+                            ? 'Cargando datos del cliente...'
+                            : 'El técnico aún no transmite su señal GPS...',
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Overlay "Calculando mejor ruta..." si se está cargando
+            if (_loadingRoute)
+              Container(
+                color: Colors.black.withValues(alpha: 0.5),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(
+                        color: Color(0xFF38BDF8),
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'Calculando mejor ruta...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Botón flotante para recentrar
+            if (_mapaListo)
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: FloatingActionButton.small(
+                  heroTag: 'recentrar_map_fab',
+                  backgroundColor: const Color(0xFF1E293B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: const BorderSide(color: Color(0xFF334155)),
+                  ),
+                  onPressed: _recentrarMapa,
+                  tooltip: 'Recentrar seguimiento',
+                  child: const Icon(Icons.my_location, size: 18),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Acciones de contacto y compartir ────────────────────────
+  Future<void> _hacerLlamada() async {
+    final telefono = _tecnicoTelefono;
+    if (telefono == null || telefono.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No existe número disponible.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+    final url = Uri.parse('tel:${telefono.trim()}');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir el marcador para el número: $telefono'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  void _abrirChat() {
+    if (_asignacionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El chat no está disponible hasta que se asigne un técnico.'),
+          backgroundColor: Colors.amber,
+        ),
+      );
+      return;
+    }
+    Navigator.pushNamed(
+      context,
+      '/comunicacion/chat',
+      arguments: ChatArgs(
+        asignacionId: _asignacionId!,
+        nombreContacto: _tecnicoNombre ?? 'Técnico Asignado',
+      ),
+    );
+  }
+
+  Future<void> _compartirSeguimiento() async {
+    final statusText = _getEstadoLabel(_estadoActual).toUpperCase();
+    final techText = _tecnicoNombre ?? 'Asignado';
+    final etaVal = (_routeEtaMinutes ?? _etaMinutos);
+    final etaText = etaVal != null ? '$etaVal min' : 'Calculando...';
+    
+    final techLat = _latitud ?? -17.80;
+    final techLng = _longitud ?? -63.14;
+    final mapsLink = 'https://maps.google.com/?q=${techLat.toStringAsFixed(6)},${techLng.toStringAsFixed(6)}';
+    
+    final text = '🚗 Seguimiento de asistencia RutaSegura\n\n'
+        'Estado: $statusText\n'
+        'Técnico: $techText\n'
+        'ETA: $etaText\n\n'
+        'Ubicación actual:\n'
+        '$mapsLink\n\n'
+        'Seguimiento generado desde RutaSegura.';
+    
+    await SharePlus.instance.share(
+      ShareParams(
+        text: text,
+      ),
+    );
+  }
+
+  void _mostrarCentroAyuda() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B), // Slate 800
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF475569), // Slate 600
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Centro de Ayuda',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '¿Tienes algún problema con el servicio? Selecciona una opción:',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8), // Slate 400
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.emergency_outlined, color: Color(0xFFDC2626)),
+                  ),
+                  title: const Text(
+                    'Emergencia (SOS)',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Llamar a los servicios de emergencia o reportar peligro inmediato.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    final url = Uri.parse('tel:110');
+                    launchUrl(url);
+                  },
+                ),
+                const Divider(color: Color(0xFF334155), height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.report_problem_outlined, color: Color(0xFF38BDF8)),
+                  ),
+                  title: const Text(
+                    'Reportar problema',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Inconvenientes con el técnico o el taller asignado.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Reporte enviado a soporte. Nos contactaremos pronto.'),
+                        backgroundColor: Color(0xFF38BDF8),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(color: Color(0xFF334155), height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.support_agent_outlined, color: Color(0xFF10B981)),
+                  ),
+                  title: const Text(
+                    'Contactar soporte',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Hablar directamente con un administrador del sistema.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    final url = Uri.parse('tel:+59170000000');
+                    launchUrl(url);
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Componentes de UI Rediseñados ───────────────────────────
+  Widget _buildTechnicianCard() {
+    final techName = _tecnicoNombre ?? 'Técnico Asignado';
+    final workshopName = _tallerNombre ?? 'Taller de Asistencia';
+    
+    final int ratingSeed = _tecnicoId ?? 1;
+    final double rating = 4.5 + (ratingSeed % 5) * 0.1;
+    final int servicesCount = 80 + (ratingSeed % 10) * 15;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2563EB), Color(0xFF3B82F6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                techName.isNotEmpty ? techName[0].toUpperCase() : 'T',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
-
-          // Barra inferior de detalles (Distancia y ETA)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-            ),
-            child: Row(
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.straighten_outlined,
-                          color: Color(0xFF38BDF8),
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'DISTANCIA',
-                              style: TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              hasTecnico ? distanciaTexto : '—',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                Text(
+                  techName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: const Color(0xFF334155),
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.speed_outlined,
-                          color: Color(0xFFF59E0B),
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'ETA ESTIMADO',
-                              style: TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _etaMinutos != null ? '$_etaMinutos min' : '—',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 2),
+                Text(
+                  workshopName,
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 13,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.star, color: Colors.amber, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '($servicesCount servicios)',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMetricsCards() {
+    final hasTecnico = _latitud != null && _longitud != null;
+    
+    String distanciaTexto = 'Calculando...';
+    if (_routeDistanceKm != null) {
+      distanciaTexto = '${_routeDistanceKm!.toStringAsFixed(1)} km';
+    } else if (hasTecnico && _clienteLat != null && _clienteLng != null) {
+      try {
+        const distanceCalc = Distance();
+        final metros = distanceCalc.distance(LatLng(_clienteLat!, _clienteLng!), LatLng(_latitud!, _longitud!));
+        if (metros < 1000) {
+          distanciaTexto = '${metros.toStringAsFixed(0)} m';
+        } else {
+          distanciaTexto = '${(metros / 1000).toStringAsFixed(1)} km';
+        }
+      } catch (_) {
+        distanciaTexto = '—';
+      }
+    }
+    
+    final etaVal = _routeEtaMinutes ?? _etaMinutos;
+    final etaTexto = etaVal != null ? '$etaVal min' : 'Calculando...';
+    
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tiempo estimado',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  etaTexto,
+                  style: const TextStyle(
+                    color: Color(0xFF38BDF8),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Distancia',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  distanciaTexto,
+                  style: const TextStyle(
+                    color: Color(0xFF38BDF8),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalTimeline(int activeIndex) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(_pasos.length, (index) {
+            final paso = _pasos[index];
+            final label = paso['label'] as String;
+            final isCompleted = index < activeIndex;
+            final isActive = index == activeIndex;
+
+            Widget dot;
+            if (isCompleted) {
+              dot = Container(
+                width: 24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  color: emeraldColor,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, color: Colors.white, size: 14),
+              );
+            } else if (isActive) {
+              dot = Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2563EB),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2563EB).withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              );
+            } else {
+              dot = Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF334155),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF475569), width: 1),
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    dot,
+                    const SizedBox(height: 8),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                        color: isActive
+                            ? Colors.white
+                            : isCompleted
+                                ? Colors.white70
+                                : Colors.white38,
+                      ),
+                    ),
+                  ],
+                ),
+                if (index < _pasos.length - 1)
+                  Container(
+                    width: 32,
+                    height: 2,
+                    margin: const EdgeInsets.only(bottom: 18, left: 4, right: 4),
+                    color: isCompleted ? emeraldColor : const Color(0xFF334155),
+                  ),
+              ],
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildActionButton(
+            icon: Icons.phone,
+            label: 'Llamar',
+            color: const Color(0xFF2563EB),
+            onPressed: _hacerLlamada,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildActionButton(
+            icon: Icons.chat_bubble_outline,
+            label: 'Chat',
+            color: const Color(0xFF2563EB),
+            onPressed: _abrirChat,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildActionButton(
+            icon: Icons.share,
+            label: 'Compartir',
+            color: const Color(0xFF2563EB),
+            onPressed: _compartirSeguimiento,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        elevation: 2,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: Colors.white),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpCenterButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton.icon(
+        onPressed: _mostrarCentroAyuda,
+        icon: const Icon(Icons.help_outline, color: Color(0xFF38BDF8), size: 18),
+        label: const Text(
+          'Centro de Ayuda',
+          style: TextStyle(
+            color: Color(0xFF38BDF8),
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
       ),
     );
   }

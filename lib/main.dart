@@ -66,9 +66,12 @@ import 'package:taller_movil/features/seguimiento/seguimiento_tecnico_page.dart'
 
 
 
-void main() {
+import 'package:taller_movil/services/push_notification_service.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SyncService().inicializar();
+  await PushNotificationService.inicializar();
   runApp(const RutaSegura());
 }
 
@@ -78,6 +81,7 @@ class RutaSegura extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: PushNotificationService.navigatorKey,
       title: 'RutaSegura',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

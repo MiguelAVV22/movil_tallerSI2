@@ -7,6 +7,7 @@ import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/features/seguimiento/websocket_service.dart';
 import 'package:taller_movil/features/seguimiento/ubicacion_service.dart';
 import 'package:taller_movil/services/taller_service.dart';
+import 'package:taller_movil/services/routing_service.dart';
 
 class SeguimientoTecnicoPage extends StatefulWidget {
   const SeguimientoTecnicoPage({super.key});
@@ -44,6 +45,16 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
   final MapController _mapController = MapController();
   bool _mapaListo = false;
   bool _firstUbicacionCentrada = false;
+
+  // Ruta real por calles usando OSRM
+  final RoutingService _routingService = RoutingService();
+  List<LatLng> _routePoints = [];
+  double? _routeDistanceKm;
+  int? _routeEtaMinutes;
+
+  double? _lastRoutingLat;
+  double? _lastRoutingLng;
+  DateTime? _lastRoutingTime;
 
   // Estado de la UI
   String _statusConexion = 'Desconectado';
@@ -101,6 +112,7 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
           if (_mapaListo) {
             _recentrarMapa();
           }
+          _verificarYActualizarRuta();
         }
       }
     } catch (e) {
@@ -220,6 +232,8 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
           _recentrarMapa();
         }
       }
+
+      await _verificarYActualizarRuta();
 
       // Asegurar conexión WebSocket antes de enviar
       if (_wsService == null || !_wsService!.isConnected) {
@@ -727,17 +741,18 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
         ? LatLng(_latitud!, _longitud!)
         : null;
 
-    // Calcular distancia aproximada si ambos están disponibles
+    // Calcular distancia aproximada o usar la de OSRM si está disponible
     String distanciaTexto = 'Calculando...';
-    double? metros;
-    if (hasCliente && hasTecnico) {
+    if (_routeDistanceKm != null) {
+      distanciaTexto = '${_routeDistanceKm!.toStringAsFixed(1)} km';
+    } else if (hasCliente && hasTecnico) {
       try {
         const distanceCalc = Distance();
-        metros = distanceCalc.distance(clientPos, tecnicoPos!);
+        final metros = distanceCalc.distance(clientPos, tecnicoPos!);
         if (metros < 1000) {
           distanciaTexto = '${metros.toStringAsFixed(0)} m';
         } else {
-          distanciaTexto = '${(metros / 1000).toStringAsFixed(2)} km';
+          distanciaTexto = '${(metros / 1000).toStringAsFixed(1)} km';
         }
       } catch (e) {
         distanciaTexto = 'Error al calcular';
@@ -800,8 +815,8 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
                         PolylineLayer(
                           polylines: [
                             Polyline(
-                              points: [clientPos, tecnicoPos!],
-                              strokeWidth: 4.0,
+                              points: _routePoints.isNotEmpty ? _routePoints : [clientPos, tecnicoPos!],
+                              strokeWidth: 5.0,
                               color: const Color(0xFF38BDF8),
                             ),
                           ],
@@ -1035,6 +1050,83 @@ class _SeguimientoTecnicoPageState extends State<SeguimientoTecnicoPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _verificarYActualizarRuta() async {
+    if (!mounted) return;
+    if (_clienteLat == null || _clienteLng == null || _latitud == null || _longitud == null) {
+      return;
+    }
+
+    final now = DateTime.now();
+    bool debeRecalcular = false;
+
+    if (_lastRoutingLat == null || _lastRoutingLng == null || _lastRoutingTime == null || _routePoints.isEmpty) {
+      debeRecalcular = true;
+    } else {
+      try {
+        const distanceCalc = Distance();
+        final metros = distanceCalc.distance(
+          LatLng(_lastRoutingLat!, _lastRoutingLng!),
+          LatLng(_latitud!, _longitud!),
+        );
+        final segundosDiff = now.difference(_lastRoutingTime!).inSeconds;
+        if (metros > 100 || segundosDiff > 30) {
+          debeRecalcular = true;
+        }
+      } catch (e) {
+        debeRecalcular = true;
+      }
+    }
+
+    if (!debeRecalcular) return;
+
+    _lastRoutingLat = _latitud;
+    _lastRoutingLng = _longitud;
+    _lastRoutingTime = now;
+
+    try {
+      final result = await _routingService.obtenerRuta(
+        origenLat: _latitud!,
+        origenLng: _longitud!,
+        destinoLat: _clienteLat!,
+        destinoLng: _clienteLng!,
+      );
+
+      if (!mounted) return;
+
+      if (result != null) {
+        setState(() {
+          _routePoints = result.points;
+          _routeDistanceKm = result.distanceMeters / 1000.0;
+          _routeEtaMinutes = (result.durationSeconds / 60.0).round();
+          if (!_etaModificadoManualmente && _estadoActual != 'LLEGADA' && _estadoActual != 'FINALIZADO') {
+            _etaMinutos = _routeEtaMinutes!;
+          }
+        });
+      } else {
+        if (_routePoints.isEmpty) {
+          setState(() {
+            _routePoints = [
+              LatLng(_clienteLat!, _clienteLng!),
+              LatLng(_latitud!, _longitud!),
+            ];
+            const distanceCalc = Distance();
+            final metros = distanceCalc.distance(
+              LatLng(_clienteLat!, _clienteLng!),
+              LatLng(_latitud!, _longitud!),
+            );
+            _routeDistanceKm = metros / 1000.0;
+            _routeEtaMinutes = calcularEta(metros);
+            if (!_etaModificadoManualmente && _estadoActual != 'LLEGADA' && _estadoActual != 'FINALIZADO') {
+              _etaMinutos = _routeEtaMinutes!;
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al calcular ruta real del técnico: $e');
+    }
   }
 
   void _recentrarMapa() {

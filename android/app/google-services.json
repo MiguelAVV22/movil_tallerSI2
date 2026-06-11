@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "428422386120",
+    "project_id": "rutasegura-50114",
+    "storage_bucket": "rutasegura-50114.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:428422386120:android:272341161b13b39de4f0fd",
+        "android_client_info": {
+          "package_name": "com.example.taller_movil"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABfYoLniD81UB7r-52OLMVIUURly5005I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

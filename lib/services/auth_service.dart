@@ -1,10 +1,10 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:flutter/foundation.dart';
 import 'api_config.dart';
 import 'api_helper.dart';
+import 'package:taller_movil/services/push_notification_service.dart';
 
 class AuthService {
   static final _baseUrl = ApiConfig.api('acceso');
@@ -91,6 +91,23 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    final token = await getToken();
+    final fcmToken = PushNotificationService.fcmToken;
+    if (token != null && fcmToken != null) {
+      try {
+        await http.delete(
+          Uri.parse('${ApiConfig.api('comunicacion')}/notificaciones/token'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'token': fcmToken}),
+        );
+      } catch (e) {
+        debugPrint('Error al eliminar token FCM en logout: $e');
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);
@@ -113,5 +130,33 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, data['access_token'] as String);
     await prefs.setString(_userKey, jsonEncode(data['user']));
+
+    final fcmToken = PushNotificationService.fcmToken;
+    if (fcmToken != null) {
+      await enviarTokenFCM(fcmToken, data['access_token'] as String);
+    }
+  }
+
+  Future<void> enviarTokenFCM(String fcmToken, [String? explicitToken]) async {
+    final token = explicitToken ?? await getToken();
+    if (token == null) return;
+
+    try {
+      final res = await http.post(
+        Uri.parse('${ApiConfig.api('comunicacion')}/notificaciones/token'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'token': fcmToken}),
+      );
+      if (res.statusCode == 200) {
+        debugPrint('Token FCM registrado correctamente en el servidor.');
+      } else {
+        debugPrint('Error al registrar token FCM: ${res.statusCode} ${res.body}');
+      }
+    } catch (e) {
+      debugPrint('Excepción al enviar token FCM: $e');
+    }
   }
 }

@@ -28,7 +28,12 @@ class NotificacionService {
       final res = await ejecutarPeticion(http.get(Uri.parse(ruta), headers: headers));
       ultimo = res;
       if (res.statusCode == 200) {
-        return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+        final decoded = jsonDecode(res.body);
+        if (decoded is List) {
+          return decoded.cast<Map<String, dynamic>>();
+        } else if (decoded is Map<String, dynamic>) {
+          return [];
+        }
       }
       if (res.statusCode != 404) {
         verificarRespuesta(res);
