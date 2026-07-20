@@ -10,6 +10,7 @@ import 'package:taller_movil/features/acceso_registro/cambiar_contrasena/cambiar
 import 'package:taller_movil/features/acceso_registro/recuperar_contrasena/recuperar_contrasena_page.dart';
 import 'package:taller_movil/features/acceso_registro/registrar_vehiculo/registrar_vehiculo_page.dart';
 import 'package:taller_movil/features/acceso_registro/gestionar_vehiculos/gestionar_vehiculos_page.dart';
+import 'package:taller_movil/features/acceso_registro/gestionar_contactos_sos/gestionar_contactos_sos_page.dart';
 import 'package:taller_movil/features/acceso_registro/registrar_taller/registrar_taller_page.dart';
 import 'package:taller_movil/features/acceso_registro/aprobar_talleres/aprobar_talleres_page.dart';
 import 'package:taller_movil/features/acceso_registro/gestionar_usuarios/gestionar_usuarios_page.dart';
@@ -104,6 +105,7 @@ class RutaSegura extends StatelessWidget {
         // ── Acceso y Registro ─────────────────────────────
         '/acceso/registrar-vehiculo': (_) => const RegistrarVehiculoPage(),
         '/acceso/mis-vehiculos':      (_) => const GestionarVehiculosPage(),
+        '/acceso/contactos-sos':      (_) => const GestionarContactosSosPage(),
         '/acceso/registrar-taller':   (_) => const RegistrarTallerPage(),
         '/aprobar-talleres':          (_) => const AprobarTalleresPage(),
         '/gestionar-usuarios':        (_) => const GestionarUsuariosPage(),
@@ -128,6 +130,7 @@ class RutaSegura extends StatelessWidget {
         '/talleres/gestionar-tecnicos':  (_) => const GestionarTecnicosPage(),
         '/talleres/disponibilidad':      (_) => const GestionarDisponibilidadPage(),
         '/talleres/estado-servicio':     (_) => const ActualizarEstadoServicioPage(),
+        '/talleres/actualizar-estado':   (_) => const ActualizarEstadoServicioPage(),
         '/talleres/servicio-realizado':  (_) => const RegistrarServicioRealizadoPage(),
 
         // ── Cotización y Pagos ────────────────────────────

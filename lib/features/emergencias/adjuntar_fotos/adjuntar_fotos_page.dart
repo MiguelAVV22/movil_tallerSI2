@@ -202,11 +202,23 @@ class _AdjuntarFotosPageState extends State<AdjuntarFotosPage> {
             ],
             if (_subidas.isNotEmpty) ...[
               const SizedBox(height: 24),
-              Text(
-                'Fotos registradas (${_subidas.length})',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Fotos registradas (${_subidas.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  TextButton.icon(
+                    onPressed: () => _pick(ImageSource.camera),
+                    icon: const Icon(Icons.add_a_photo_outlined, size: 16),
+                    label: const Text('Agregar más', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
-              ..._subidas.map((item) {
+              ..._subidas.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final item = entry.value;
                 final url     = item['url'] as String;
                 final analisis = item['analisis_ia'] as Map<String, dynamic>?;
                 return Container(
@@ -225,6 +237,16 @@ class _AdjuntarFotosPageState extends State<AdjuntarFotosPage> {
                         child: Text(url,
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
+                        tooltip: 'Eliminar foto',
+                        onPressed: () {
+                          setState(() { _subidas.removeAt(idx); });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Foto eliminada'), backgroundColor: AppColors.primary),
+                          );
+                        },
                       ),
                     ]),
                     if (analisis != null) ...[

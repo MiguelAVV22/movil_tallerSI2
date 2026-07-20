@@ -8,7 +8,7 @@ class ApiConfig {
   static String get origin {
     const envUrl = String.fromEnvironment('API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    return kIsWeb ? 'http://localhost:8000' : 'http://192.168.0.3:8000';
+    return kIsWeb ? 'http://localhost:8000' : 'http://192.168.0.11:8000';
   }
 
   static String api(String path) => '$origin/api/$path';

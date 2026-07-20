@@ -35,6 +35,7 @@ final _allSections = [
     label: 'Acceso y Registro',
     items: [
       _ItemDef(label: 'Mis Vehículos',      route: '/acceso/mis-vehiculos',    roles: ['cliente']),
+      _ItemDef(label: 'Contactos SOS',       route: '/acceso/contactos-sos',    roles: ['cliente']),
       _ItemDef(label: 'Registrar Taller',   route: '/acceso/registrar-taller', roles: ['taller']),
       _ItemDef(label: 'Gestionar Usuarios', route: '/gestionar-usuarios',      roles: ['admin']),
       _ItemDef(label: 'Aprobar Talleres',   route: '/aprobar-talleres',        roles: ['admin']),

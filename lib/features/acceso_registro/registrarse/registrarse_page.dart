@@ -25,6 +25,28 @@ class _RegistrarsePageState extends State<RegistrarsePage> {
   bool _obscurePwd      = true;
   bool _obscureConfirm  = true;
   String _serverError   = '';
+  List<Map<String, dynamic>> _tenants = [];
+  int? _selectedTenantId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTenants();
+  }
+
+  Future<void> _loadTenants() async {
+    try {
+      final tenants = await _authService.getPublicTenants();
+      setState(() {
+        _tenants = tenants;
+        if (tenants.isNotEmpty) {
+          _selectedTenantId = tenants.first['id'] as int;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error al cargar tenants: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -39,12 +61,17 @@ class _RegistrarsePageState extends State<RegistrarsePage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedTenantId == null) {
+      setState(() { _serverError = 'Por favor selecciona una red de talleres'; });
+      return;
+    }
     setState(() { _loading = true; _serverError = ''; });
     try {
       await _authService.register(
         email:    _emailCtrl.text.trim(),
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
+        tenantId: _selectedTenantId!,
         fullName: _fullNameCtrl.text.trim(),
         telefono: _telefonoCtrl.text.trim(),
       );
@@ -137,6 +164,47 @@ class _RegistrarsePageState extends State<RegistrarsePage> {
                           hint: '+591 70000000',
                           keyboardType: TextInputType.phone,
                         ),
+                        if (_tenants.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Red de Talleres',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<int>(
+                            value: _selectedTenantId,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            items: _tenants.map((t) {
+                              return DropdownMenuItem<int>(
+                                value: t['id'] as int,
+                                child: Text(
+                                  t['nombre'] as String,
+                                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() { _selectedTenantId = val; });
+                            },
+                            validator: (v) => v == null ? 'Selección requerida' : null,
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         AuthField(
                           controller: _passwordCtrl,

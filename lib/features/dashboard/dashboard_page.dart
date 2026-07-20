@@ -7,6 +7,7 @@ import 'package:taller_movil/services/emergencia_service.dart';
 import 'package:taller_movil/services/emergencia_local_service.dart';
 import 'package:taller_movil/services/sync_service.dart';
 import 'package:taller_movil/services/api_helper.dart';
+import 'package:taller_movil/services/sos_service.dart';
 import 'package:taller_movil/shared/app_drawer.dart';
 import 'dart:async';
 
@@ -129,11 +130,78 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       final msg = lat != null
           ? '🆘 SOS enviado con tu ubicación. Talleres alertados.'
-          : '🆘 SOS enviado sin GPS. Talleres alertados — contactarán por chat.';
+          : '🆘 SOS enviado sin GPS. Talleres alertados.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: AppColors.danger, duration: const Duration(seconds: 5)),
+        SnackBar(content: Text(msg), backgroundColor: AppColors.danger, duration: const Duration(seconds: 4)),
       );
-      Navigator.pushNamed(context, '/solicitudes/estado');
+
+      // Alertar familiares / Contactos SOS configurados
+      try {
+        final sosSvc = SosService();
+        final contactos = await sosSvc.listarContactos();
+        if (contactos.isNotEmpty && mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (c) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.share, color: AppColors.primary, size: 22),
+                  SizedBox(width: 8),
+                  Text('Alertar a Familiares', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('SOS enviado exitosamente en la plataforma.'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '¿Deseas enviar una alerta directa de emergencia a tus contactos de confianza por WhatsApp?',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                  ),
+                  const SizedBox(height: 12),
+                  ...contactos.map((cont) {
+                    final String nombre = cont['nombre'] ?? '';
+                    final String relacion = cont['relacion'] ?? 'contacto';
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: const Color(0xFFF9FAFB),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Colors.green,
+                          child: Icon(Icons.chat, color: Colors.white, size: 18),
+                        ),
+                        title: Text(nombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        subtitle: Text(relacion, style: const TextStyle(fontSize: 11)),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                        onTap: () async {
+                          Navigator.pop(c);
+                          await sosSvc.dispararSOS(cont, usarWhatsapp: true);
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c),
+                  child: const Text('Omitir', style: TextStyle(color: Color(0xFF9CA3AF))),
+                ),
+              ],
+            ),
+          );
+        }
+      } catch (e) {
+        print('[SOS] Error cargando contactos de emergencia: $e');
+      }
+
+      if (mounted) {
+        Navigator.pushNamed(context, '/solicitudes/estado');
+      }
     } catch (e) {
       if (!mounted) return;
       if (e is TokenExpiradoException) {
@@ -286,7 +354,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_isTaller) {
       return [
         _QuickCard(icon: Icons.assignment_outlined,      label: 'Ver Solicitudes',     iconBg: const Color(0xFFEFF6FF), iconColor: AppColors.primary,  onTap: () => Navigator.pushNamed(ctx, '/solicitudes/disponibles')),
-        _QuickCard(icon: Icons.build_outlined,           label: 'Estado Servicio',     iconBg: const Color(0xFFFEF2F2), iconColor: AppColors.danger,   onTap: () => Navigator.pushNamed(ctx, '/talleres/actualizar-estado')),
+        _QuickCard(icon: Icons.build_outlined,           label: 'Estado Servicio',     iconBg: const Color(0xFFFEF2F2), iconColor: AppColors.danger,   onTap: () => Navigator.pushNamed(ctx, '/talleres/estado-servicio')),
         _QuickCard(icon: Icons.people_outline,           label: 'Técnicos',            iconBg: const Color(0xFFECFDF5), iconColor: AppColors.success,  onTap: () => Navigator.pushNamed(ctx, '/talleres/tecnicos')),
         _QuickCard(icon: Icons.chat_bubble_outline,      label: 'Chat',                iconBg: const Color(0xFFECFDF5), iconColor: AppColors.success,  onTap: () => Navigator.pushNamed(ctx, '/comunicacion/chat')),
         _QuickCard(icon: Icons.receipt_long_outlined,    label: 'Cotizaciones',        iconBg: const Color(0xFFF5F3FF), iconColor: const Color(0xFF7C3AED), onTap: () => Navigator.pushNamed(ctx, '/pagos/cotizacion')),
@@ -295,7 +363,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     if (_isTecnico) {
       return [
-        _QuickCard(icon: Icons.build_outlined,           label: 'Estado Servicio',     iconBg: const Color(0xFFEFF6FF), iconColor: AppColors.primary,  onTap: () => Navigator.pushNamed(ctx, '/talleres/actualizar-estado')),
+        _QuickCard(icon: Icons.build_outlined,           label: 'Estado Servicio',     iconBg: const Color(0xFFEFF6FF), iconColor: AppColors.primary,  onTap: () => Navigator.pushNamed(ctx, '/talleres/estado-servicio')),
         _QuickCard(icon: Icons.chat_bubble_outline,      label: 'Chat',                iconBg: const Color(0xFFECFDF5), iconColor: AppColors.success,  onTap: () => Navigator.pushNamed(ctx, '/comunicacion/chat')),
         _QuickCard(icon: Icons.task_alt,                 label: 'Registrar Servicio',  iconBg: const Color(0xFFFEF2F2), iconColor: AppColors.danger,   onTap: () => Navigator.pushNamed(ctx, '/talleres/registrar-servicio')),
         _QuickCard(icon: Icons.location_on_outlined,     label: 'Compartir Ubicación', iconBg: const Color(0xFFECFDF5), iconColor: AppColors.success,  onTap: () => Navigator.pushNamed(ctx, '/comunicacion/compartir-ubicacion')),

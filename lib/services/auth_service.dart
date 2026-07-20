@@ -27,10 +27,25 @@ class AuthService {
     throw Exception(detalleRespuesta(res, fallback: 'Error al iniciar sesion'));
   }
 
+  Future<List<Map<String, dynamic>>> getPublicTenants() async {
+    final res = await ejecutarPeticion(
+      http.get(
+        Uri.parse('$_baseUrl/tenants/public'),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
+    if (res.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(res.body);
+      return data.map((e) => e as Map<String, dynamic>).toList();
+    }
+    throw Exception(detalleRespuesta(res, fallback: 'Error al obtener redes de talleres'));
+  }
+
   Future<Map<String, dynamic>> register({
     required String email,
     required String username,
     required String password,
+    required int tenantId,
     String? fullName,
     String? telefono,
   }) async {
@@ -38,6 +53,7 @@ class AuthService {
       'email': email,
       'username': username,
       'password': password,
+      'tenant_id': tenantId,
       if (fullName != null && fullName.isNotEmpty) 'full_name': fullName,
       if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
     };

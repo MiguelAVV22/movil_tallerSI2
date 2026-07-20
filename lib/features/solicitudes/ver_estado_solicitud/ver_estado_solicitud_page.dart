@@ -5,6 +5,8 @@ import 'package:taller_movil/core/theme/app_colors.dart';
 import 'package:taller_movil/services/emergencia_service.dart';
 import 'package:taller_movil/services/taller_service.dart';
 import 'package:taller_movil/services/api_helper.dart';
+import 'package:taller_movil/features/emergencias/adjuntar_fotos/adjuntar_fotos_page.dart';
+import 'package:taller_movil/features/emergencias/enviar_audio/enviar_audio_page.dart';
 
 /// CU10 – Ver estado de solicitud (mis incidentes, taller, ETA, actualización periódica).
 class VerEstadoSolicitudPage extends StatefulWidget {
@@ -248,6 +250,48 @@ class _VerEstadoSolicitudPageState extends State<VerEstadoSolicitudPage> {
                                       ),
                                     ),
                                   ],
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.add_a_photo_outlined, size: 16),
+                                          label: const Text('Fotos', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.primary,
+                                            padding: const EdgeInsets.symmetric(vertical: 8),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => AdjuntarFotosPage(incidenteId: id),
+                                              ),
+                                            ).then((_) => _cargar(silencioso: true));
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.mic_none_outlined, size: 16),
+                                          label: const Text('Grabar audio', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.primary,
+                                            padding: const EdgeInsets.symmetric(vertical: 8),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => EnviarAudioPage(incidenteId: id),
+                                              ),
+                                            ).then((_) => _cargar(silencioso: true));
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ] else
                                   const Padding(
                                     padding: EdgeInsets.only(top: 6),
