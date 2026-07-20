@@ -7,8 +7,7 @@ class ApiConfig {
   // flutter run --dart-define=API_BASE_URL=http://192.168.1.35:8000
   static String get origin {
     const envUrl = String.fromEnvironment('API_BASE_URL');
-    if (envUrl.isNotEmpty) return envUrl;
-    return kIsWeb ? 'http://localhost:8000' : 'http://192.168.0.11:8000';
+    return 'https://backend-tallersi2.onrender.com';
   }
 
   static String api(String path) => '$origin/api/$path';
