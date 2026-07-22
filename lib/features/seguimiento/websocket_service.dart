@@ -33,7 +33,7 @@ class WebSocketService {
     if (isConnected || _isConnecting) return;
 
     _isConnecting = true;
-    final url = '${ApiConfig.wsBaseUrl}/ws/seguimiento/$incidenteId';
+    final url = '${ApiConfig.wsBaseUrl}/api/seguimiento/ws/$incidenteId';
     debugPrint('WebSocketService: Conectándose a $url');
 
     try {
